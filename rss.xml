@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Next.js 16.3.0 全栈实战教程</title>
+    <link>https://yzhijie.github.io/nextjs-tutorial-site/</link>
+    <description>服务端驱动的架构，单页应用般的即时导航</description>
+    <language>zh-CN</language>
+    <lastBuildDate>Fri, 23 Oct 2026 07:03:22 GMT</lastBuildDate>
+    <item>
+      <title>14. 综合实战：全栈 SaaS 应用</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/14-capstone/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/14-capstone/basics</guid>
+      <description>从架构到上线：多租户、i18n、PWA、AI 智能体协作</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>13. 测试、可观测与部署</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/13-testing-deployment/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/13-testing-deployment/basics</guid>
+      <description>Playwright/Vitest、OTel、自托管、Adapters 与生产清单</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>12. 性能优化体系</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/12-performance/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/12-performance/basics</guid>
+      <description>React Compiler、包体积、懒加载、预取调优与 Web Vitals</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>11. 认证、授权与安全</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/11-auth-security/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/11-auth-security/basics</guid>
+      <description>会话模式、Cache Components 下的鉴权、CSP 与数据安全</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>10. 样式、静态资源与 Metadata</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/10-styling-assets/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/10-styling-assets/basics</guid>
+      <description>Tailwind v4、next/font、next/image、元数据与站点地图</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>9. Route Handlers 与 proxy.ts</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/09-route-handlers/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/09-route-handlers/basics</guid>
+      <description>route.ts 接口、Webhook、middleware 到 proxy 的迁移</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>8. 渲染模式与静态生成</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/08-rendering/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/08-rendering/basics</guid>
+      <description>SSG/SSR/ISR、generateStaticParams、PPR 心智模型</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>7. Server Actions 与表单变更</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/07-server-actions/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/07-server-actions/basics</guid>
+      <description>use server、表单动作、useActionState、乐观更新</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>6. Instant Navigations 即时导航</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/06-instant-navigation/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/06-instant-navigation/basics</guid>
+      <description>Cache Components、Partial Prefetching、Stream/Cache/Block</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>5. 缓存与重新验证</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/05-caching/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/05-caching/basics</guid>
+      <description>use cache、cacheLife、cacheTag/updateTag 与动态默认模型</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>4. 数据获取与流式渲染</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/04-data-fetching/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/04-data-fetching/basics</guid>
+      <description>服务端取数、fetch、Suspense 流式、并行与串行请求</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>3. 服务端组件与客户端组件</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/03-components/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/03-components/basics</guid>
+      <description>组件边界、use client、组合模式与常见陷阱</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>2. 路由与导航</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/02-routing/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/02-routing/basics</guid>
+      <description>页面/布局/模板、动态路由、路由组、并行与拦截路由</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+    <item>
+      <title>1. 认识 Next.js 16.3</title>
+      <link>https://yzhijie.github.io/nextjs-tutorial-site/chapters/01-introduction/basics</link>
+      <guid isPermaLink="true">https://yzhijie.github.io/nextjs-tutorial-site/chapters/01-introduction/basics</guid>
+      <description>框架定位、16.x 演进脉络、安装与项目结构</description>
+      <pubDate>Fri, 23 Oct 2026 06:06:13 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,5278 @@
+# Next.js 16.3.0 全栈实战教程
+
+> 服务端驱动的架构，单页应用般的即时导航
+
+# 1. 认识 Next.js 16.3
+
+## Next.js 在解决什么问题
+
+只用 React 写应用时，你需要自己把一堆“零件”拼成一辆车：路由库、SSR/SSG 方案、打包器、代码分割策略、缓存策略、部署适配……Next.js 把这些零件预先组装好，并在 React 之上规定了一套**基于文件约定的全栈架构**。
+
+它的核心价值可以浓缩成三句话：
+
+1. **路由即文件系统**：在 `app/` 目录下放一个文件，就自动得到一条路由
+2. **服务端与客户端都是一等公民**：组件默认在服务端渲染，需要交互时再加一行 `'use client'`
+3. **框架级缓存与渲染优化**：流式渲染、部分预渲染、缓存组件等能力由框架统一调度
+
+> **术语解释**：SSR（Server-Side Rendering）指首屏 HTML 由服务器生成；SSG（Static Site Generation）指构建时就生成 HTML；CSR（Client-Side Rendering）指浏览器拿到 JS 后再渲染。Next.js 允许你在同一个应用里为每条路由分别选择策略。
+
+## 先厘清三个词：客户端、服务端与全栈
+
+### 三个术语的定义
+
+| 术语 | 代码运行在 | 负责什么 | 典型技术 |
+| --- | --- | --- | --- |
+| 客户端开发 | 用户的浏览器 / App | 界面渲染、交互响应、浏览器能力 | React、Vue、CSS |
+| 服务端开发 | 你控制的服务器（Node 进程等） | 接收请求、执行业务规则、读写数据库与缓存、保管密钥与鉴权 | Express、Koa、NestJS、FastAPI、数据库 |
+| 全栈开发 | 两端贯通 | 同一个应用（往往也是同一个工程师）同时交付客户端与服务端能力 | Next.js 这类一体化框架 |
+
+::: info “服务端”不是“后端框架”的同义词
+服务端开发的本质是“代码跑在服务器、处理请求与数据”，与用什么框架无关：用 Koa 手写 HTTP 服务是服务端开发；在 Next.js 服务端组件里查数据库，同样是服务端开发——区别只在代码如何组织。
+:::
+
+### 传统模型：SPA + 独立后端
+
+经典前后端分离中，前端与后端是**两个仓库、两次部署**，靠 HTTP/JSON 契约对接：
+
+```text title="模型一：前后端分离"
+浏览器
+└─ React/Vue SPA（路由、取数、渲染都在客户端）
+      │  HTTP / JSON（需先设计并长期维护 API 契约）
+┌─────┴─────────────┐
+│ 独立后端服务        │  Express / Koa / NestJS / FastAPI
+│ 鉴权 · 业务规则     │
+└─────┬─────────────┘
+      ├─ 数据库
+      └─ Redis / 内部服务
+```
+
+### Next.js 模型：一个应用里的全栈
+
+Next.js 把两层收进**一个仓库、一次部署**：同一条路由上，服务端产出的 HTML 与客户端交互叶子由框架统一调度，不必为“首屏取数”单独设计一层 API：
+
+```text title="模型二：Next.js 全栈"
+浏览器
+└─ 服务端组件直出的 HTML（首屏即可见）+ 客户端组件（交互叶子）
+      │  仅在需要时：Server Actions（POST）/ Route Handlers
+┌─────┴─────────────┐
+│ 同一个 Next 服务    │  服务端组件 · Actions · route.ts
+│ 鉴权 · 取数 · 渲染  │
+└─────┬─────────────┘
+      ├─ 数据库
+      └─ Redis / 内部服务
+```
+
+### 两种模型系统对比
+
+| 维度 | SPA + 独立后端 | Next.js 全栈 |
+| --- | --- | --- |
+| 仓库与部署 | 两个仓库、两条发布线 | 一个仓库、一次部署 |
+| 接口契约 | 所有交互都经显式 HTTP API | 组件直接取数；仅对外能力才写 API |
+| 首屏 | 客户端渲染（需额外接 SSR 方案） | 默认服务端渲染，HTML 直出 |
+| 数据获取 | 前端 fetch 自家接口，至少一跳 | 组件内直连数据库/内部服务，无自调一跳 |
+| 写操作 | 手写接口 + 客户端调用 + 手动刷新 | Server Actions：执行、失效、重渲染一个往返 |
+| 鉴权落点 | 后端中间件统一拦截 | 每个 Action / Handler / 数据层内部重复校验 |
+| 团队分工 | 前端/后端边界清晰 | 按能力分层，要求工程师贯通两端 |
+| 适合场景 | 多客户端共用 API、复杂域逻辑、独立扩缩容 | Web 产品为主体、追求交付速度与首屏体验 |
+
+### 边界：什么时候仍然需要独立后端
+
+Next.js 可以承担 BFF（面向前端的编排层），但官方明确它**不是完整后端的替代品**。以下能力应留在独立服务（第 14 章的 BFF 边界表给出同一结论）：
+
+- 核心业务规则与跨服务事务：下单、计费、对账
+- 高吞吐后台任务、消息队列消费、定时批处理
+- 同时服务移动端与第三方系统、需要长期稳定契约的公共 API
+- 需要独立于 Web 层扩缩容的计算密集型服务
+
+::: tip 给有独立后端经验的读者
+如果你熟悉 Express/Koa 的中间件模型，可以这样迁移心智：服务端组件相当于“请求处理器 + 模板渲染”合一；Route Handlers 就是你熟悉的裸 HTTP 端点；`proxy.ts` 只做粗粒度网关动作，不替代鉴权中间件。原有业务后端不必推倒，常见形态是 Next.js 作为它前面的 BFF——第 14 章的 TeamHub 正是这一结构。
+:::
+
+### 本书的全栈能力地图
+
+后续章节就是这张分层图的逐项展开：
+
+| 全栈分层 | 对应章节 |
+| --- | --- |
+| 服务端渲染与组件边界 | 第 3 章 · 服务端组件与客户端组件 |
+| 服务端取数与流式 | 第 4 章 · 数据获取与流式渲染 |
+| 缓存与新鲜度 | 第 5 章 · 缓存与重新验证 |
+| 服务端写操作 | 第 7 章 · Server Actions 与表单变更 |
+| HTTP 接口与网关 | 第 9 章 · Route Handlers 与 proxy.ts |
+| 鉴权与安全 | 第 11 章 · 认证、授权与安全 |
+| 全栈整合落地 | 第 14 章 · 综合实战：全栈 SaaS 应用 |
+
+## 16.x 代际：动态优先，显式缓存
+
+理解 Next.js 16.3 之前，先要理解 16.0 定下的基调。早期 App Router（13/14）带有大量**隐式缓存**：`fetch` 默认会被缓存、路由默认静态化，行为像一本“默认规则手册”，很多开发者记不清哪条数据到底新不新鲜。
+
+从 16.0 开始，模型翻转为：
+
+- **动态是默认值**：所有动态代码（访问请求信息、取数、未显式缓存的部分）默认在请求时执行，没有隐藏缓存
+- **缓存是显式 opt-in**：想缓存？在组件或函数顶部写下 `'use cache'`，意图即代码
+- **Turbopack 成为默认打包器**：开发冷启动、HMR、生产构建全面提速
+- **`middleware.ts` 更名为 `proxy.ts`**：明确它是网络边界代理，且运行在 Node 运行时
+- **请求 API 全部异步**：`params`、`searchParams`、`cookies()`、`headers()` 都需要 `await`
+
+::: info 16.3 的位置
+16.3 不是一次推倒重来，而是把 16.0 铺好的“动态优先 + 显式缓存”地基推向极致：新增 **Instant Navigations（即时导航）** 工具集，配合 Turbopack 的内存与构建优化、原生 Node 流 SSR，以及一整套面向 AI 编程智能体的开发链路。
+:::
+
+## 16.3 的六大关键变化
+
+| 变化 | 你能感知到什么 | 教程位置 |
+| --- | --- | --- |
+| Instant Navigations | 点链接瞬间出骨架，不再“白屏等网络” | 第 6 章 |
+| `cacheComponents` + `'use cache'` | 用指令精确控制页面哪些部分可缓存 | 第 5、6 章 |
+| Partial Prefetching | 多个链接的预取合并成一个共享外壳 | 第 6 章 |
+| Turbopack 磁盘缓存 + 内存回收 | dev 内存最高降 90%，CI 重复构建更快 | 第 12、13 章 |
+| 原生 Node 流 SSR / Edge 废弃 | 高负载吞吐提升，代理统一跑在 Node | 第 9、13 章 |
+| AGENTS.md + Skills + Instant Insights | AI 智能体可读到版本匹配文档与可修复错误 | 第 14 章 |
+
+## 环境要求与安装
+
+Next.js 16.3 的最低运行环境：
+
+- **Node.js ≥ 20.9.0**（本教程在 Node 24 上验证）
+- 包管理器：本教程统一使用 **pnpm**（11.x）
+- 编辑器：VS Code（或任何能使用 TypeScript 插件的编辑器）
+
+如果还没有 pnpm，推荐通过 Corepack 启用：
+
+```bash title="启用 pnpm（只需一次）"
+corepack enable
+corepack prepare pnpm@latest --activate
+pnpm -v
+```
+
+创建新项目最标准的方式是官方脚手架。加 `--use-pnpm` 让它生成 pnpm 的锁文件：
+
+```bash title="用 create-next-app 创建项目"
+pnpm dlx create-next-app@latest my-app \
+  --ts \
+  --app \
+  --tailwind \
+  --eslint \
+  --src-dir \
+  --import-alias "@/*" \
+  --use-pnpm
+```
+
+交互式提问中这些选项的含义：
+
+| 选项 | 推荐值 | 说明 |
+| --- | --- | --- |
+| TypeScript | Yes | 全教程默认 TS，strict 模式 |
+| ESLint | Yes | 代码质量底线 |
+| Tailwind CSS | Yes | 16.x 模板默认 Tailwind v4 |
+| `src/` 目录 | Yes | 源码与配置分离 |
+| App Router | Yes | 本教程只讲 App Router |
+| import alias | `@/*` | 绝对路径导入 |
+
+在已有项目中精确安装本教程对应的版本：
+
+```bash title="锁定教程版本"
+pnpm add next@16.3.0
+pnpm add -D typescript @types/node @types/react @types/react-dom
+```
+
+::: tip
+脚手架默认拉的是最新版（可能是 16.3.x 的更高补丁号）。补丁版本只修 bug，不影响本教程 API；如需与教程完全一致，显式安装 `next@16.3.0`。
+:::
+
+## 启动开发服务器
+
+```bash title="日常开发"
+cd my-app
+pnpm dev
+```
+
+打开 `http://localhost:3000`，你会看到模板首页。Next 16 的 `pnpm dev` 默认就是 **Turbopack**，不再需要任何 `--turbo` 参数。
+
+```tsx title="app/page.tsx —— 第一个页面"
+export default function Home() {
+  return (
+    <main style=&#123;&#123; padding: 48, fontFamily: 'sans-serif' &#125;&#125;>
+      <h1>你好，Next.js 16.3</h1>
+      <p>这是一个默认的服务端组件。</p>
+    </main>
+  );
+}
+```
+
+保存文件，浏览器几乎瞬间更新 —— 这是 Fast Refresh 与 Turbopack 增量编译共同作用的结果。
+
+## 项目结构速览
+
+启用 `src/` 后，典型结构长这样：
+
+```text title="最小项目结构"
+my-app/
+├── src/
+│   └── app/
+│       ├── favicon.ico
+│       ├── globals.css      # 全局样式
+│       ├── layout.tsx       # 根布局：<html>/<body> 与元数据
+│       └── page.tsx         # 首页 /
+├── public/                  # 原样拷贝的静态资源
+├── next.config.ts           # 框架配置（TS 配置文件）
+├── tsconfig.json
+└── package.json
+```
+
+记住三个最重要的约定文件：
+
+- **`page.tsx`**：路由的叶子，一个文件对应一个可访问 URL
+- **`layout.tsx`**：包裹子页面的共享 UI，导航时布局**不会重新渲染**
+- **`template.tsx`**：与 layout 类似，但每次导航都会重新挂载（需要重置状态时用）
+
+## 第一个可交互组件：感受演练场
+
+下方代码块右上角点击 **「在线运行」**，就可以直接在浏览器里改写并运行它（无需任何本地环境）：
+
+```tsx title="可直接运行的第一个组件" playground
+'use client';
+
+import { useState } from 'react';
+
+export default function App() {
+  const [name, setName] = useState('Next.js 16.3');
+
+  return (
+    <div>
+      <h2>我的第一个交互组件</h2>
+      <label>你的名字</label>
+      <input value={name} onChange={(e) => setName(e.target.value)} />
+      <div className="card" style=&#123;&#123; marginTop: 12 &#125;&#125;>
+        你好，<strong>{name}</strong>！
+      </div>
+    </div>
+  );
+}
+```
+
+::: tip 学习约定
+本教程所有带 `playground` 标记的代码块都能在线运行；带 `全栈实验` 按钮的会跳转到浏览器内真实 Next.js 容器；其余代码块都有一键复制，可直接粘进本地项目。
+:::
+
+## 小结与下一步
+
+- Next.js 是 React 之上的**全栈应用框架**，核心是文件路由 + 服务端能力 + 框架级优化
+- 服务端开发 = 代码跑在服务器处理请求与数据；全栈 = 一个应用贯通两端——Next.js 全栈并不排斥独立后端，两者按 BFF 边界协作
+- 16.x 的基调是**动态默认、显式缓存**，16.3 的旗舰是 Instant Navigations
+- 用 pnpm + create-next-app 起步，`pnpm dev` 默认 Turbopack
+
+下一篇我们进入 App Router 的**路由与导航**：布局嵌套、动态段、路由组，以及并行/拦截路由这些“高级但常用”的约定。
+
+# 2. 路由与导航
+
+## app 目录即路由
+
+App Router 没有集中式的路由配置文件。**文件夹就是 URL 段，约定文件就是该段的 UI**。在 `src/app/` 下每新建一个文件夹加一个 `page.tsx`，就得到一条可访问路由：
+
+```text title="文件夹与 URL 的映射"
+src/app/
+├── page.tsx                  # /
+├── blog/
+│   └── page.tsx              # /blog
+│       └── [slug]/
+│           └── page.tsx      # /blog/:slug（动态段）
+└── dashboard/
+    └── page.tsx              # /dashboard
+```
+
+只有名叫 `page` 的文件才会成为可访问 URL 的叶子；`layout`、`loading`、`error` 等文件服务于该段但不产生独立路径。
+
+## page、layout、template：三种共享 UI 的区别
+
+| 约定文件 | 作用 | 导航时是否重渲染/重挂载 |
+| --- | --- | --- |
+| `page.tsx` | 路由叶子，对应一个具体 URL | 切换路由时渲染新页面 |
+| `layout.tsx` | 包裹子段的共享 UI，接收 `children` | **不重渲染**，状态保留 |
+| `template.tsx` | 与 layout 结构相同，但带唯一 key | 该段每次导航都**重新挂载** |
+
+根布局是必需的，且必须包含 `<html>` 与 `<body>`：
+
+```tsx title="src/app/layout.tsx —— 根布局"
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Next.js 16.3 练功房',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="zh-CN">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+在 `blog/` 下再加一个同名 `layout.tsx`，它会自动包住 `/blog` 与 `/blog/[slug]` 两个页面——写法与根布局相同：默认导出接收 `children` 的组件，把侧边栏、子导航放在 `{children}` 之外即可，嵌套层级由目录结构自动决定。
+
+::: tip
+布局不重渲染意味着：布局里的客户端状态（搜索框文字、侧边栏展开状态）在子页面间切换时天然保留。需要“每次进入都重置”的 UI（例如录入表单、进场动画）才用 `template.tsx`。
+:::
+
+## 用 Link 导航，而不是手写 a 标签
+
+`<Link>` 是对 `<a>` 的封装，提供**客户端跳转**与**视口内自动预取**：链接滚入视口后，Next.js 会在后台预取目标路由，点击时往往无需等待网络。
+
+```tsx title="src/app/blog/post-list.tsx —— 文章列表（服务端组件）"
+import Link from 'next/link';
+
+type Post = { slug: string; title: string };
+
+export default function PostList({ posts }: { posts: Post[] }) {
+  return (
+    <ul className="space-y-2">
+      {posts.map((post) => (
+        <li key={post.slug}>
+          <Link href={`/blog/${post.slug}`} className="text-blue-600">
+            {post.title}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+需要编程式导航（提交成功后跳转、按钮触发）时，在客户端组件里使用 `next/navigation` 的 `useRouter`；读取当前路径用 `usePathname`：
+
+- `router.push(href)`：新增一条历史记录并跳转
+- `router.replace(href)`：替换当前历史记录（登录后常用）
+- `router.back()` / `router.forward()`：历史前进后退
+
+::: warn
+预取只在**生产环境**生效，`pnpm dev` 下观察不到预取请求是正常的。静态路由默认预取整页；动态路由默认跳过，或在该段存在 `loading.tsx` 时预取共享布局与骨架。
+:::
+
+## 动态段：params 必须 await
+
+方括号文件夹 `[slug]` 捕获 URL 中的动态值。16.x 中 `params` 是一个 **Promise**，必须 `await` 后解构：
+
+```tsx title="src/app/blog/[slug]/page.tsx —— 文章详情"
+import { notFound } from 'next/navigation';
+import { getPost } from '@/lib/posts';
+
+// 用全局 PageProps 类型约束 params 形状
+export default async function BlogPostPage(
+  props: PageProps<'/blog/[slug]'>
+) {
+  const { slug } = await props.params; // 16.x：params 是 Promise
+  const post = await getPost(slug);
+
+  if (!post) {
+    notFound(); // 数据不存在时渲染该段的 not-found.tsx
+  }
+
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <div>{post.content}</div>
+    </article>
+  );
+}
+```
+
+查询字符串同理：页面组件的 `searchParams` 也是 Promise，`const { q } = await searchParams`。读取 `searchParams` 会让该页进入动态渲染，因为它依赖真实请求。
+
+::: danger
+从 15 升级的项目最典型的运行时错误就是漏写 `await`：`params.slug` 取到的是 `undefined`。同段的 `layout.tsx`、`generateMetadata`、`route.ts` 拿到的 `params` 也全是 Promise。
+:::
+
+## loading / error / not-found：三个约定文件
+
+这三个文件分别接管一段路由的“加载中、出错了、找不到”三种状态，框架会自动把它们包成对应的 React 边界。
+
+```tsx title="src/app/blog/[slug]/loading.tsx —— 导航瞬间显示骨架"
+export default function Loading() {
+  return (
+    <div className="animate-pulse space-y-3">
+      <div className="h-8 w-2/3 rounded bg-gray-200" />
+      <div className="h-4 w-full rounded bg-gray-200" />
+      <div className="h-4 w-5/6 rounded bg-gray-200" />
+    </div>
+  );
+}
+```
+
+`error.tsx` 必须是客户端组件，16.3 的恢复函数叫 `retry`（旧版的 `reset` 仍可用，但只重置错误状态、不重新取数）：
+
+```tsx title="src/app/blog/[slug]/error.tsx —— 错误边界"
+'use client';
+
+import { useEffect } from 'react';
+
+export default function BlogError({
+  error,
+  retry,
+}: {
+  error: Error & { digest?: string };
+  retry: () => void;
+}) {
+  useEffect(() => {
+    // 上报到错误监控；服务端错误的 message 会被脱敏，用 digest 对日志
+    console.error(error.digest, error.message);
+  }, [error]);
+
+  return (
+    <div>
+      <h2>文章加载失败</h2>
+      <button onClick={() => retry()} className="primary">
+        重试
+      </button>
+    </div>
+  );
+}
+```
+
+`not-found.tsx` 是普通服务端组件，无需接收 props：在同段放一个返回“没有这篇文章 + 返回列表”链接的默认导出，就会接管 `notFound()` 与该段的 404 展示。
+
+错误会沿路由树**向上冒泡**到最近的 `error.tsx`，所以可以在根段放粗粒度兜底、在重要业务段放细粒度提示。
+
+## 在线演练：激活态导航
+
+下面的演练场模拟后台侧边栏。真实项目中激活样式由 `usePathname()` 与链接 `href` 的匹配关系推导；演练场内用 state 模拟当前路径，并实时显示 `usePathname()` 的真实返回值：
+
+```tsx title="激活导航：点击菜单项观察高亮" playground
+'use client';
+
+import { useState } from 'react';
+import { usePathname } from 'next/navigation';
+
+const NAV_ITEMS = [
+  { href: '/dashboard', label: '仪表盘' },
+  { href: '/blog', label: '文章管理' },
+  { href: '/settings', label: '系统设置' },
+];
+
+export default function App() {
+  // 演练场没有真实路由，用 state 模拟“当前路径”
+  const [active, setActive] = useState('/dashboard');
+  // 真实项目里直接用这个值推导激活态
+  const pathname = usePathname();
+
+  return (
+    <div className="row" style=&#123;&#123; gap: 16, alignItems: 'flex-start' &#125;&#125;>
+      <nav className="card" style=&#123;&#123; width: 180, padding: 12 &#125;&#125;>
+        {NAV_ITEMS.map((item) => {
+          const isActive = active === item.href;
+          return (
+            <button
+              key={item.href}
+              onClick={() => setActive(item.href)}
+              style=&#123;&#123;
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                marginTop: 4,
+                padding: '8px 12px',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontWeight: isActive ? 700 : 400,
+                background: isActive ? '#dbeafe' : 'transparent',
+                color: isActive ? '#1d4ed8' : '#374151',
+              &#125;&#125;
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="card" style=&#123;&#123; flex: 1, padding: 16 &#125;&#125;>
+        <h3 style=&#123;&#123; marginTop: 0 &#125;&#125;>主内容区</h3>
+        <p className="muted">当前选中：{active}</p>
+        <span className="badge">usePathname() 实际返回：{pathname}</span>
+        <p className="muted" style=&#123;&#123; marginBottom: 0 &#125;&#125;>
+          项目代码里写 <code>pathname.startsWith(item.href)</code> 即可高亮父级菜单。
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **在服务端组件里用 `useRouter`**：导航 hook 只能在客户端组件中调用；服务端需要跳转请用 `redirect()`。
+- **把 `<a href>` 当主用导航**：原生 `<a>` 会整页刷新，不预取、不保留布局状态；只有跳外链才用它。
+- **布局里直接 `await params` 导致整段无法预渲染**：进阶篇与第 5、6 章会给出“把 params Promise 下发到子组件”的模式。
+- **以为 `loading.tsx` 能救布局里的慢数据**：同段 `loading.tsx` 包不住同段布局的异步阻塞，慢取数要下沉到 `page` 或用 `<Suspense>` 就近包裹。
+
+## 小结
+
+- App Router 用文件系统约定路由：文件夹是 URL 段，`page.tsx` 是叶子
+- `layout` 导航时不重渲染、状态保留；`template` 每次重挂载
+- `<Link>` 提供客户端跳转与视口预取，`usePathname`/`useRouter` 服务于交互场景
+- 动态段与查询参数在 16.x 全是 Promise，一律 `await`
+- `loading`/`error`/`not-found` 三个约定文件把加载、错误、404 边界化
+
+下一篇进入进阶话题：路由组、并行路由、拦截路由，以及预取与滚动恢复的底层行为。
+
+# 3. 服务端组件与客户端组件
+
+## 默认就是服务端组件
+
+在 App Router 里，`page.tsx`、`layout.tsx` 以及你自己新建的组件，**默认全部是服务端组件**——组件代码只在服务器运行，不会打包进浏览器 JS。下面这个组件除了 React 运行时的基础开销外，不向浏览器发送任何它自身的代码：
+
+```tsx title="src/app/products/page.tsx —— 默认服务端组件"
+import { db } from '@/lib/db';
+
+export default async function ProductsPage() {
+  // 密钥、数据库查询、文件系统读取都可以直接写在这里
+  const products = await db.product.findMany();
+
+  return (
+    <ul>
+      {products.map((p) => (
+        <li key={p.id}>{p.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+服务端组件擅长的事：直接查数据库、调用内部服务、使用密钥、渲染大段静态内容。代价是它**不能**使用 `useState`、`useEffect`、事件处理器和浏览器 API。
+
+## 什么时候才需要 'use client'
+
+在文件顶部写一行 `'use client'`，就在模块图上画出了一条边界：这个文件以及它 import 的所有模块进入客户端包。判断标准非常朴素——**这段逻辑是否必须在浏览器里响应变化**：
+
+| 需求 | 归属 | 典型 API |
+| --- | --- | --- |
+| 读取数据库 / 调用内部接口 | 服务端 | `await db...` |
+| 使用密钥、服务端令牌 | 服务端 | `process.env.API_KEY` |
+| 点击、输入、拖拽等事件 | 客户端 | `onClick`、`onChange` |
+| 组件状态与生命周期 | 客户端 | `useState`、`useEffect` |
+| 浏览器能力 | 客户端 | `localStorage`、`window`、地理定位 |
+| 自定义 hook（含上述能力） | 客户端 | `useXxx()` |
+
+```tsx title="src/app/ui/add-to-cart-button.tsx —— 客户端叶子"
+'use client';
+
+import { useState } from 'react';
+
+export default function AddToCartButton({ sku }: { sku: string }) {
+  const [added, setAdded] = useState(false);
+
+  return (
+    <button
+      className="primary"
+      disabled={added}
+      onClick={() => setAdded(true)}
+    >
+      {added ? '已加入购物车' : `加入购物车 · ${sku}`}
+    </button>
+  );
+}
+```
+
+::: tip
+`'use client'` 只需要写在**客户端子树的入口文件**顶部。这个文件 import 的其他组件自动属于客户端包，不需要每个文件都重复声明；反过来，它也不会“感染”通过 children 传入的服务端组件（进阶篇细讲）。
+:::
+
+## 关键澄清：客户端组件也会被服务端渲染成 HTML
+
+“Client Component”这个名字最常见的误解是：它只在浏览器渲染。事实是它会经历**两次渲染**：
+
+| 组件类型 | 服务端产出 HTML | 浏览器是否收到组件代码 |
+| --- | --- | --- |
+| 服务端组件 | 是 | 否（零客户端 JS） |
+| 客户端组件 | 是（首屏） | 是，水合后附加交互 |
+
+所以首屏到达浏览器时，按钮的文字、商品的价格都已经在 HTML 里，爬虫与弱网用户先看到完整内容；JS 下载完成后 React 再把事件处理器“水合”到已有 DOM 上。客户端导航（点 `<Link>` 跳转）时才是只下发 RSC 负载、在浏览器内渲染客户端组件。
+
+在客户端组件里加一行日志可以直观验证：直接访问页面时，终端与浏览器控制台各打印一次。
+
+```tsx title="src/app/ui/hello.tsx —— 两个环境都会执行"
+'use client';
+
+export default function Hello() {
+  // 直接访问：服务端打印一次，浏览器水合时再打印一次
+  console.log('Hello rendered');
+  return <p>Hello</p>;
+}
+```
+
+::: warn
+因此“客户端组件对 SEO 不友好”是错误推论：首屏 HTML 同样包含它的内容。真正不会出现在 HTML 里的，是**依赖用户交互后才获取或切换**的内容。
+:::
+
+## 推荐结构：server 壳 + client 叶子
+
+最健康的组件树长这样：页面在服务端取数、组装布局，只把真正需要交互的小叶子标记为客户端：
+
+```tsx title="src/app/products/[sku]/page.tsx —— 服务端壳"
+import { notFound } from 'next/navigation';
+import AddToCartButton from '@/app/ui/add-to-cart-button';
+import { getProduct } from '@/lib/products';
+
+export default async function ProductPage(
+  props: PageProps<'/products/[sku]'>
+) {
+  const { sku } = await props.params;
+  const product = await getProduct(sku);
+  if (!product) notFound();
+
+  return (
+    <article className="p-8">
+      <h1>{product.name}</h1>
+      <p className="text-xl">{product.price}</p>
+      {/* 唯一的交互叶子：只把它的 JS 发给浏览器 */}
+      <AddToCartButton sku={product.sku} />
+    </article>
+  );
+}
+```
+
+商品标题、价格、详情这些占页面 90% 体积的内容零 JS；只有一个按钮携带客户端代码。布局里的搜索框同理：`<Search />` 单独是客户端组件，Logo、导航链接、页脚全部留在服务端。
+
+## 在线演练：交互需要多大的边界
+
+下面的卡片中，商品信息是“服务端渲染的静态内容”，只有数量步进器与按钮需要响应变化。点击加号观察状态只集中在最小区域——这就是“client 叶子”的心智：
+
+```tsx title="找出必须进入客户端的最小区域" playground
+'use client';
+
+import { useState } from 'react';
+
+export default function App() {
+  const [qty, setQty] = useState(1);
+  const [added, setAdded] = useState(false);
+
+  return (
+    <div>
+      <h3>机械键盘 · 87 键</h3>
+      <p className="muted">SKU：KB-87 · 现货 200 件</p>
+
+      <div className="card" style=&#123;&#123; marginTop: 12, padding: 16 &#125;&#125;>
+        <div className="row" style=&#123;&#123; justifyContent: 'space-between' &#125;&#125;>
+          <strong>￥399</strong>
+          <div className="row" style=&#123;&#123; gap: 8 &#125;&#125;>
+            <button
+              aria-label="减少数量"
+              onClick={() => setQty((n) => Math.max(1, n - 1))}
+              disabled={qty <= 1}
+            >
+              －
+            </button>
+            <span className="badge" style=&#123;&#123; minWidth: 32, textAlign: 'center' &#125;&#125;>
+              {qty}
+            </span>
+            <button
+              aria-label="增加数量"
+              onClick={() => setQty((n) => Math.min(200, n + 1))}
+              disabled={qty >= 200}
+            >
+              ＋
+            </button>
+          </div>
+        </div>
+
+        <button
+          className={added ? '' : 'primary'}
+          style=&#123;&#123; width: '100%', marginTop: 12 &#125;&#125;
+          disabled={added}
+          onClick={() => setAdded(true)}
+        >
+          {added ? '已加入购物车' : `加入购物车（共 ${qty} 件）`}
+        </button>
+      </div>
+
+      <p className="muted" style=&#123;&#123; marginTop: 12 &#125;&#125;>
+        真实项目里：标题、价格、库存文案由服务端组件输出；步进器与按钮才放进
+        <code> AddToCartButton</code> 这一个 client 叶子。
+      </p>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **在页面顶部无脑加 `'use client'`**：整页立刻进入客户端包，数据库驱动、密钥能力全部失效，JS 体积随页面线性膨胀。
+- **把“有交互”等同于“整棵树都要客户端”**：需要的是最小交互叶子，不是容器。
+- **在服务端组件里写 `onClick`**：构建期直接报错；事件处理器无法跨序列化边界。
+- **认为客户端组件不产出 HTML**：首屏 HTML 与水合是两件事，动态内容的初始形态照样在 HTML 里。
+- **客户端组件里直连数据库**：它的代码会下发浏览器，查询语句与凭据全部泄漏；取数留在服务端，再以 props 传入。
+
+## 小结
+
+- App Router 组件默认只跑在服务器，不向浏览器发送自身代码
+- `'use client'` 是模块边界，只为状态、事件、浏览器 API 而画
+- 客户端组件同样经历服务端首屏渲染，水合只负责附加交互
+- 最优结构是“服务端壳取数与布局 + 最小客户端叶子负责交互”
+
+下一篇进入进阶：跨边界 props 的可序列化铁律、children 透传、第三方库包装，以及模块图如何决定 JS 体积。
+
+# 4. 数据获取与流式渲染
+
+## 组件就是取数单元
+
+App Router 不需要 `getServerSideProps` 之类的前置取数层。组件本身是 `async` 函数，**在渲染过程中直接读取资源**：可以是 `fetch`，也可以是 ORM、数据库驱动、内部 gRPC 客户端。
+
+```tsx title="src/app/blog/page.tsx —— 服务端组件直接 await"
+type Post = { id: string; title: string };
+
+export default async function BlogPage() {
+  const res = await fetch('https://api.example.com/posts');
+  if (!res.ok) throw new Error(`文章列表请求失败：${res.status}`);
+  const posts: Post[] = await res.json();
+
+  return (
+    <ul>
+      {posts.map((post) => (
+        <li key={post.id}>{post.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+数据库查询同理，凭据与 SQL 不会进客户端包：
+
+```tsx title="src/app/dashboard/page.tsx —— 直接查询数据库"
+import { db, orders } from '@/lib/db';
+
+export default async function DashboardPage() {
+  const recentOrders = await db.select().from(orders).limit(10);
+  return <OrderTable rows={recentOrders} />;
+}
+```
+
+## 16.x 的第一前提：fetch 默认不缓存
+
+这是与早期 App Router 最大的语义差异，必须先刻进脑子：
+
+| 写法 | 16.x 行为 |
+| --- | --- |
+| `fetch(url)`（默认） | 不持久化缓存；路由动态时**每次请求**都重新获取 |
+| `fetch(url, { cache: 'force-cache' })` | 显式纳入框架持久缓存 |
+| `fetch(url, { next: { revalidate: 60 } })` | 显式缓存 60 秒 |
+| ORM / 数据库驱动 | 无自动缓存；需要时用 `'use cache'`（第 5 章） |
+
+开发环境还有一个易混淆点：HMR 期间默认会跨模块热替换**记忆化** fetch 响应以省费用，导航或整页刷新后清空。如果你发现改完代码数据“没变”，先整页刷新一次再排查。
+
+::: warn
+未完成的数据请求会阻塞整段渲染——这是默认行为，不是 bug。想要“先出壳、数据后到”，有两条路：显式缓存（第 5 章）或本篇后半部分的 Suspense 流式。
+:::
+
+## 请求瀑布：被 await 顺序吃掉的时间
+
+同一组件里连续 `await`，第二个请求必须等第一个完成，即使两者毫无依赖：
+
+```tsx title="串行瀑布：总耗时 ≈ 800ms + 1200ms"
+export default async function ArtistPage(
+  props: PageProps<'/artist/[username]'>
+) {
+  const { username } = await props.params;
+
+  // 先等歌手信息（约 800ms）
+  const artist = await getArtist(username);
+  // 再等专辑列表（约 1200ms）——它本来不需要 artist 数据
+  const albums = await getAlbums(username);
+
+  return (
+    <>
+      <h1>{artist.name}</h1>
+      <AlbumList items={albums} />
+    </>
+  );
+}
+```
+
+修复方式是**先同步发起所有请求，再统一等待**：调用即发起，Promise 先握在手里：
+
+```tsx title="并行发起：总耗时 ≈ max(800, 1200)"
+export default async function ArtistPage(
+  props: PageProps<'/artist/[username]'>
+) {
+  const { username } = await props.params;
+
+  // 两行同步执行，两个请求此刻同时在飞
+  const artistPromise = getArtist(username);
+  const albumsPromise = getAlbums(username);
+
+  const [artist, albums] = await Promise.all([artistPromise, albumsPromise]);
+
+  return (
+    <>
+      <h1>{artist.name}</h1>
+      <AlbumList items={albums} />
+    </>
+  );
+}
+```
+
+::: tip
+两个额外的免费优化：
+
+- 同一次服务端渲染中，**完全相同的 GET fetch 自动记忆化**，多个组件请求同一 URL 只发一次
+- 不同路由段（布局、页面）默认就是并行渲染的，每段尽早发起自己的数据；别把所有取数堆到根布局里人为串起来
+:::
+
+若一个请求失败时不希望拖垮整页，用 `Promise.allSettled` 替代 `Promise.all`，对 rejected 项渲染降级 UI。
+
+## 用 Suspense 把“等待”切成块
+
+并行化压缩总时长，但页面仍要等最慢的请求才能发一个字节。流式渲染改变这点：静态外壳先发，慢数据在各自的 Suspense 边界后补齐。
+
+```tsx title="src/app/dashboard/page.tsx —— 页面级流式"
+import { Suspense } from 'react';
+import { ArtistHeader } from '@/components/artist-header';
+import { AlbumList } from '@/components/album-list';
+import { AlbumListSkeleton } from '@/components/skeletons';
+
+export default function ArtistPage(
+  props: PageProps<'/artist/[username]'>
+) {
+  const { username } = await props.params;
+
+  return (
+    <>
+      {/* 头部不依赖慢请求，立即出现在 HTML 里 */}
+      <ArtistHeader username={username} />
+      {/* 专辑列表慢：先给骨架，数据到了自动替换 */}
+      <Suspense fallback={<AlbumListSkeleton />}>
+        <AlbumList username={username} />
+      </Suspense>
+    </>
+  );
+}
+```
+
+`AlbumList` 在自己的异步函数里发起请求；React 先把 fallback 刷给浏览器，承诺解析后再流式推送真实内容。文件约定 `loading.tsx` 等价于在该段最外层自动包一层 Suspense（第 2 章已用），手写 `<Suspense>` 的优势是**粒度更细**：页面头、侧栏、列表可以各等各的。
+
+## 在线演练：瀑布 vs 并行
+
+下面用三个模拟接口（延迟分别约 400/700/1000ms）对比两种写法的总耗时。串行结果应为三者之和，并行约等于最慢的一个：
+
+```tsx title="点击两个按钮，对比总耗时" playground
+'use client';
+
+import { useState } from 'react';
+
+// 模拟一个有固定延迟的接口
+function mockFetch(name: string, delay: number) {
+  return new Promise<{ name: string; delay: number }>((resolve) => {
+    setTimeout(() => resolve({ name, delay }), delay);
+  });
+}
+
+const APIS = [
+  { name: '歌手信息', delay: 400 },
+  { name: '专辑列表', delay: 700 },
+  { name: '演出日程', delay: 1000 },
+];
+
+export default function App() {
+  const [log, setLog] = useState<string[]>([]);
+  const [running, setRunning] = useState<'seq' | 'par' | null>(null);
+
+  async function runSequential() {
+    setRunning('seq');
+    setLog(['串行开始…']);
+    const start = performance.now();
+    for (const api of APIS) {
+      const r = await mockFetch(api.name, api.delay);
+      setLog((lines) => [...lines, `${r.name} 完成（${r.delay}ms）`]);
+    }
+    setLog((lines) => [...lines, `串行总耗时：${Math.round(performance.now() - start)}ms`]);
+    setRunning(null);
+  }
+
+  async function runParallel() {
+    setRunning('par');
+    setLog(['并行开始…']);
+    const start = performance.now();
+    // 先统一发起，再统一等待
+    const results = await Promise.all(
+      APIS.map((api) => mockFetch(api.name, api.delay))
+    );
+    results.forEach((r) =>
+      setLog((lines) => [...lines, `${r.name} 完成（${r.delay}ms）`])
+    );
+    setLog((lines) => [...lines, `并行总耗时：${Math.round(performance.now() - start)}ms`]);
+    setRunning(null);
+  }
+
+  return (
+    <div>
+      <div className="row" style=&#123;&#123; gap: 8 &#125;&#125;>
+        <button className="primary" disabled={running !== null} onClick={runSequential}>
+          {running === 'seq' ? '串行请求中…' : '串行 await'}
+        </button>
+        <button disabled={running !== null} onClick={runParallel}>
+          {running === 'par' ? '并行请求中…' : 'Promise.all 并行'}
+        </button>
+      </div>
+      <div className="card" style=&#123;&#123; marginTop: 12, padding: 12 &#125;&#125;>
+        {log.length === 0 ? (
+          <span className="muted">点击按钮查看耗时日志</span>
+        ) : (
+          log.map((line, i) => <pre key={i} style=&#123;&#123; margin: '4px 0' &#125;&#125;>{line}</pre>)
+        )}
+      </div>
+      <p className="muted">理论值：串行 ≈ 2100ms，并行 ≈ 1000ms（取最慢请求）。</p>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **以为 16.x 的 fetch 还默认缓存**：不写选项就是动态获取，“为什么数据不更新”通常要反过来查是否误用了缓存选项。
+- **在循环里 `await`**：`for` 中逐条 await 天然串行；先 `map` 成 Promise 数组再 `Promise.all`。
+- **所有请求塞根布局**：布局无法被同段 `loading.tsx` 兜底，慢接口会卡住导航；数据尽量下沉到使用它的段。
+- **Suspense 包了但 fallback 占位高度为 0**：内容到达后布局跳动，CLS 恶化；骨架要预留与真实内容相近的尺寸。
+- **用 `Promise.all` 却在前面 await 过一次**：请求必须在同一同步执行栈内发起才并行，别提前 await 任意一个。
+
+## 小结
+
+- 服务端 `async` 组件直接 `await` 任意异步 I/O，取数与渲染同处一地
+- 16.x 动态默认：`fetch` 不持久缓存，缓存与保鲜全部显式声明
+- 无依赖的请求先统一发起再 `Promise.all`，总耗时取最慢请求
+- Suspense 让外壳先到、慢数据按边界流式补齐，`loading.tsx` 是段级快捷方式
+
+下一篇进入进阶：嵌套 Suspense 边界的设计、显式缓存选项、客户端取数的适用场景，以及非 fetch 数据源如何接入。
+
+# 5. 缓存与重新验证
+
+## 先立心智：不缓存才是默认值
+
+16.x 之前，开发者要花大量精力记住“哪些东西偷偷被缓存了”。16.x 翻转了模型：
+
+- **动态默认**：数据读取默认在请求时执行，没有隐藏缓存
+- **缓存是显式动作**：在函数或组件顶部写下 `'use cache'`，意图即代码
+- 缓存不是只有一个开关，而是由**寿命（cacheLife）+ 标签（cacheTag）+ 失效（revalidate/update）**三件套组成
+
+这套能力统称 **Cache Components**，需要在配置中显式开启：
+
+```ts title="next.config.ts —— 开启缓存组件"
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  cacheComponents: true, // 启用后 'use cache' / cacheLife / cacheTag 才生效
+};
+
+export default nextConfig;
+```
+
+开启后构建期会校验每段路由：任何无法在预渲染时完成的访问（未缓存取数、`cookies()`、随机值），都必须显式地被 `<Suspense>` 包裹或缓存——开发浮层会直接给出可操作的修复提示。
+
+## 第一类用法：缓存数据函数
+
+`'use cache'` 写在**异步函数体顶部**，缓存的是函数返回值。数据库查询、ORM 调用、计算密集的聚合都适用：
+
+```ts title="src/lib/products.ts —— 数据级缓存"
+import { cacheLife } from 'next/cache';
+import { db } from '@/lib/db';
+
+export async function getProductList() {
+  'use cache';
+  cacheLife('hours'); // 商品目录一天多次变化，选 hours 档
+  return db.product.findMany({
+    select: { id: true, name: true, price: true },
+  });
+}
+```
+
+调用方不需要任何特殊处理：多个组件调用 `getProductList()` 时，在寿命窗口内共享同一份缓存结果。
+
+## 第二类用法：缓存整个组件
+
+把指令写在**异步组件体顶部**，缓存的是整段渲染输出（RSC 负载）。适合“与请求无关、变化不频繁”的 UI 块：
+
+```tsx title="src/components/editorial-picks.tsx —— UI 级缓存"
+import { cacheLife, cacheTag } from 'next/cache';
+
+export default async function EditorialPicks() {
+  'use cache';
+  cacheLife('days');        // 编辑精选每天更新
+  cacheTag('picks');        // 打标签，运营改稿后可按需失效
+  const picks = await getPicksFromCms();
+
+  return (
+    <section>
+      <h2>编辑精选</h2>
+      <ul>{picks.map((p) => <li key={p.id}>{p.title}</li>)}</ul>
+    </section>
+  );
+}
+```
+
+文件顶部写 `'use cache'` 则该文件的**所有导出函数**都被缓存，适合纯数据模块；混用数据与工具函数的文件不要这么写。
+
+::: tip
+官方建议**每一个 `'use cache'` 作用域都显式配一个 `cacheLife`**。不写时套用隐式 `default` 档（stale 5 分钟 / revalidate 15 分钟 / 永不过期），读代码的人无法直观看出寿命，嵌套缓存时行为还会相互影响。
+:::
+
+## cacheLife：七档预设
+
+`cacheLife` 接收预设档位名，三档时间的含义先建立直觉：
+
+- `stale`：浏览器客户端缓存可以**不问服务器直接用**多久
+- `revalidate`：服务端多久后在**后台刷新**一次
+- `expire`：多久完全过期，过期后下一个请求要等新内容
+
+| 档位 | 典型内容 | stale | revalidate | expire |
+| --- | --- | --- | --- | --- |
+| `seconds` | 股价、实时比分 | 30s | 1s | 1m |
+| `minutes` | 社交信息流、新闻 | 5m | 1m | 1h |
+| `hours` | 库存、天气 | 5m | 1h | 1d |
+| `days` | 博客、文章 | 5m | 1d | 1w |
+| `weeks` | 播客、周报 | 5m | 1w | 30d |
+| `max` | 法律页、归档内容 | 5m | 30d | 1y |
+| `default` | 未显式指定时 | 5m | 15m | 永不 |
+
+选型依据是“内容多久变一次”，不是“这个页面重不重要”。实时数据用 `seconds`，CMS 文案配 webhook 失效时甚至可以直接用 `max`。
+
+## cacheTag：给缓存条目挂标签
+
+光有寿命不够：编辑刚改完文章，不能等明天才生效。`cacheTag(...tags)` 给条目挂逻辑标签，之后由失效函数按标签精准清除：
+
+```ts title="src/lib/posts.ts —— 集合标签 + 条目标签"
+import { cacheLife, cacheTag } from 'next/cache';
+
+export async function getPost(slug: string) {
+  'use cache';
+  cacheLife('days');
+  // 同时挂集合标签与单条标签：列表页与详情页可分别失效
+  cacheTag('posts', `post-${slug}`);
+  return db.post.findUnique({ where: { slug } });
+}
+```
+
+标签规则：单次调用最多 128 个、每个最长 256 字符；重复挂同一标签幂等；标签区分大小写。
+
+::: warn
+`cacheLife` 与 `cacheTag` 只能在 `'use cache'` 作用域内调用，且**不能在模块顶层执行**。写在函数体首行之后、业务逻辑之前即可；它们也不要抽进共享工具函数，缓存策略应当在调用处一眼可见。
+:::
+
+## 缓存键：参数天然参与
+
+你不需要手动拼缓存键。**函数参数与闭包捕获的值自动成为缓存键的一部分**，不同输入天然是不同条目：
+
+```ts title="src/lib/pricing.ts —— 每个币种、会员等级一条缓存"
+import { cacheLife } from 'next/cache';
+
+export async function getPrice(sku: string, currency: string) {
+  'use cache';
+  cacheLife('minutes');
+  // (sku='kb87', currency='CNY') 与 (sku='kb87', currency='USD') 各存一条
+  const quote = await quoteService.fetch(sku, currency);
+  return quote;
+}
+```
+
+因此入参必须可序列化（字符串、数字、普通对象），传数据库连接、类实例这类东西没有缓存意义也无法序列化。
+
+## 在线演练：时间戳缓存命中
+
+下面模拟一个带寿命的缓存读取：首次读取执行“取数”并记下时间戳；寿命窗口内再次读取直接命中缓存，时间戳不变；点“失效”后下一次读取重新取数：
+
+```tsx title="观察缓存命中时时间戳保持不变" playground
+'use client';
+
+import { useState } from 'react';
+
+type Entry = { value: number; savedAt: string };
+
+// 模拟缓存仓：寿命 8 秒
+const TTL = 8000;
+
+export default function App() {
+  const [entry, setEntry] = useState<Entry | null>(null);
+  const [log, setLog] = useState<string[]>([]);
+  const [invalidated, setInvalidated] = useState(false);
+
+  function read() {
+    const now = Date.now();
+    const fresh = entry && !invalidated && now - new Date(entry.savedAt).getTime() < TTL;
+
+    if (fresh) {
+      setLog((l) => [`命中缓存，value=${entry!.value}（时间戳不变）`, ...l].slice(0, 5));
+    } else {
+      const next = { value: Math.round(now / 1000) % 1000, savedAt: new Date(now).toLocaleTimeString() };
+      setEntry(next);
+      setInvalidated(false);
+      setLog((l) => [`未命中 → 重新取数，value=${next.value} @${next.savedAt}`, ...l].slice(0, 5));
+    }
+  }
+
+  return (
+    <div>
+      <div className="row" style=&#123;&#123; gap: 8 &#125;&#125;>
+        <button className="primary" onClick={read}>
+          读取 getNow()
+        </button>
+        <button onClick={() => setInvalidated(true)} disabled={!entry}>
+          失效缓存
+        </button>
+      </div>
+
+      <div className="card" style=&#123;&#123; marginTop: 12, padding: 12 &#125;&#125;>
+        {entry ? (
+          <>
+            <p style=&#123;&#123; margin: 0 &#125;&#125;>缓存值：<code>{entry.value}</code></p>
+            <p className="muted" style=&#123;&#123; margin: '4px 0 0' &#125;&#125;>
+              写入时间：{entry.savedAt}（寿命 {TTL / 1000}s）
+            </p>
+          </>
+        ) : (
+          <span className="muted">尚未读取过</span>
+        )}
+      </div>
+
+      <div className="card" style=&#123;&#123; marginTop: 12, padding: 12 &#125;&#125;>
+        {log.length === 0 ? (
+          <span className="muted">连续点击“读取”观察命中日志</span>
+        ) : (
+          log.map((line, i) => <pre key={i} style=&#123;&#123; margin: '4px 0' &#125;&#125;>{line}</pre>)
+        )}
+      </div>
+      <p className="muted">真实项目里“失效”对应写操作后调用 updateTag / revalidateTag。</p>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **没开 `cacheComponents` 就写 `'use cache'`**：指令不生效，行为仍是动态默认。
+- **把随机值、`Date.now()` 直接放进缓存组件却不处理**：开启校验后构建期就会报 blocking 洞察；要么缓存它（所有人共享一个值），要么 `connection()` + Suspense 延迟到请求时。
+- **在缓存组件里直接 `cookies()`**：运行时数据不能进缓存组件，需要先在外层读取再以参数下发（进阶篇细讲）。
+- **用 `seconds` 档还指望它进静态外壳**：寿命过短（revalidate 为 0 或 expire 低于 5 分钟）的缓存会成为请求时解析的“动态洞”。
+- **以为缓存键要手动拼**：参数自动入键；手动 JSON.stringify 参数反而降低可读性。
+
+## 小结
+
+- 16.x 动态默认，缓存全部显式 opt-in，先在配置中开启 `cacheComponents`
+- `'use cache'` 可标数据函数（缓存返回值）或组件（缓存渲染输出）
+- 每个缓存作用域显式声明 `cacheLife` 档位，并按内容变化频率选型
+- `cacheTag` 为按需失效铺路，函数参数自动构成缓存键
+- 运行时数据与随机值有明确的安置规则，不能混进缓存组件
+
+下一篇进入进阶：三档时间的精细控制、三种失效函数的对比与选型，以及缓存组件与 cookies/headers 的约束和旧模型迁移指引。
+
+# 6. Instant Navigations 即时导航
+
+## 痛点：点击之后，用户在等什么
+
+传统客户端导航的时序是这样的：用户点击链接 → 浏览器发出 RSC 请求 → 服务器渲染目标路由（其中可能有慢查询）→ 响应返回 → 页面切换。只要服务器这一步慢，用户看到的就是**旧页面纹丝不动，或者整块白屏**。等待时长取决于最慢的那个数据请求。
+
+Next.js 16.3 的 **Instant Navigations（即时导航）** 要消灭的就是这段等待。它的目标定义很具体：
+
+> 用户点击的那一刻，浏览器就能开始渲染新页面——静态内容、缓存内容、回退 UI 立刻出现，剩余内容由服务器流式补入。
+
+::: info 冷缓存不算数
+官方明确：即时性的前提是**缓存已预热（warm cache）**。冷缓存（首次访问、缓存过期后）仍需服务器计算一次，第一次导航可能还是会等。预热之后，后续导航才是即时的。
+:::
+
+## 两个开关
+
+即时导航不是一个 API，而是两个配置开关共同作用的结果：
+
+```ts title="next.config.ts —— 打开即时导航能力"
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  // 开关一：缓存组件，允许用 'use cache' 标记可缓存内容
+  cacheComponents: true,
+  // 开关二：部分预取，<Link> 默认预取每条路由的共享外壳
+  partialPrefetching: true,
+};
+
+export default nextConfig;
+```
+
+- **`cacheComponents`**：启用 Cache Components 模型，页面可以被拆成「静态外壳 + 动态区域」，并允许用 `'use cache'` 精确指定缓存
+- **`partialPrefetching`**：改变 `<Link>` 的预取行为——视口内的链接只预取一份**共享 App Shell**，而不是整页
+
+两个开关有依赖关系：`partialPrefetching` 必须在 `cacheComponents` 启用后才工作。
+
+## 核心心智：每个 await 三选一
+
+启用 Cache Components 后，框架在预渲染时会沿着组件树往下走，直到遇到一个「需要等待」的 `await`（读 `params`、查数据库、读 `cookies()` 等）。对这个 `await`，你只有三种合法处理方式：
+
+| 策略 | 做法 | 用户看到什么 | 适用数据 |
+| --- | --- | --- | --- |
+| **Stream（流式）** | 把 `await` 放进 `<Suspense>` 包裹的子组件 | 先看到回退 UI（骨架屏），数据到了流式补入 | 每次请求都要新鲜的数据 |
+| **Cache（缓存）** | 在异步函数内写 `'use cache'`（可配 `cacheLife`） | 内容直接进入外壳，点击瞬间可见 | 变化不频繁、可接受陈旧窗口的数据 |
+| **Block（阻塞）** | 段文件导出 `export const instant = false` | 导航在服务器上阻塞等待（放弃即时性） | 暂时无法改造、或整页必须同步就绪的段 |
+
+没有第四种选择：如果一个未缓存、又没包 Suspense 的动态读取出现在外壳路径上，开发时的 Instant Insights 会直接报错。
+
+## 最小可跑 demo：商品详情页
+
+一个最小但完整的例子。商品详情页 `/store/[slug]` 取两类数据：商品信息（很少变）和实时库存（每次要新鲜）。
+
+```tsx title="src/app/store/[slug]/page.tsx"
+import { Suspense } from 'react';
+import { db } from '@/lib/db';
+
+// 页面本身保持同步、不 await params：外壳不被任何 URL 绑定
+export default function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
+  return (
+    <div>
+      {/* Stream：包裹读取 params 的子组件，先给回退 UI */}
+      <Suspense fallback={<p>正在加载商品…</p>}>
+        <ProductInfo params={params} />
+      </Suspense>
+      <Suspense fallback={<p>正在查询库存…</p>}>
+        <Inventory params={params} />
+      </Suspense>
+    </div>
+  );
+}
+
+// Cache：商品信息少变，函数级缓存，结果可进入静态外壳
+async function getProduct(slug: string) {
+  'use cache';
+  return db.products.findBySlug(slug);
+}
+
+async function ProductInfo({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params; // await 发生在 Suspense 边界内部
+  const product = await getProduct(slug);
+  return (
+    <>
+      <h1>{product.name}</h1>
+      <p>¥{product.price}</p>
+    </>
+  );
+}
+
+// Stream：库存不缓存，每次请求实时查询，流式补入
+async function Inventory({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const item = await db.inventory.findBySlug(slug);
+  return <p>库存 {item.count} 件</p>;
+}
+```
+
+::: tip 记忆口诀
+**静态内容进外壳，缓存内容进外壳，其余全部下推到 Suspense。** 页面组件本身尽量是同步的「壳」，把 `await params` 和取数下沉到被 `<Suspense>` 包裹的叶子组件里。
+:::
+
+预热后从 `/store/shoes` 点进 `/store/hats`：商品名和价格（缓存）瞬间出现，库存区域先显示「正在查询库存…」，随后流式补齐。这就是一次即时导航。
+
+## 暂时放弃：`instant = false`
+
+不是每条路由都值得立刻改造。在 `page.tsx` 或 `layout.tsx` 导出一个段配置，即可让该段「允许阻塞」，不再报即时性错误：
+
+```tsx title="src/app/dashboard/layout.tsx —— 暂时允许阻塞"
+// 该段进入时可以等待服务器；其下方兄弟段之间的导航仍会被校验
+export const instant = false;
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+```
+
+注意它的语义是「**允许**阻塞」而非「强制动态」：本来就能预渲染的路由仍会产出静态外壳。它只关闭校验反馈，后续随时可以删掉它回头改造。
+
+## 演练场：亲手感受「外壳先行」
+
+下面这个演练场用定时器模拟网络延迟。切换模式后点击任意商品：
+
+- **即时模式（Stream + Cache）**：商品标题（缓存）立即出现，价格区先显示骨架再补齐
+- **阻塞模式（Block）**：必须等最慢的数据完成，整页一次性出现
+
+```tsx title="外壳先行 vs 阻塞等待" playground
+'use client';
+
+import { useState } from 'react';
+
+type Product = { slug: string; name: string; price: number };
+
+const PRODUCTS: Product[] = [
+  { slug: 'shoes', name: '轻量跑鞋', price: 399 },
+  { slug: 'hat', name: '棒球帽', price: 89 },
+  { slug: 'bag', name: '通勤背包', price: 259 },
+];
+
+export default function App() {
+  const [instant, setInstant] = useState(true);
+  const [current, setCurrent] = useState<Product | null>(null);
+  const [phase, setPhase] = useState<'idle' | 'shell' | 'done'>('idle');
+
+  function open(product: Product) {
+    setCurrent(product);
+    if (instant) {
+      // 即时模式：外壳（缓存标题）立即呈现
+      setPhase('shell');
+      // 慢数据 900ms 后流式补入
+      setTimeout(() => setPhase('done'), 900);
+    } else {
+      // 阻塞模式：900ms 内界面无任何响应
+      setPhase('idle');
+      setTimeout(() => setPhase('done'), 900);
+    }
+  }
+
+  return (
+    <div>
+      <div className="row" style=&#123;&#123; alignItems: 'center', gap: 8, marginBottom: 12 &#125;&#125;>
+        <span className="badge">{instant ? '即时模式 Stream/Cache' : '阻塞模式 Block'}</span>
+        <button className={instant ? 'muted' : 'primary'} onClick={() => { setInstant(false); setCurrent(null); setPhase('idle'); &#125;&#125;>
+          切到阻塞
+        </button>
+        <button className={instant ? 'primary' : 'muted'} onClick={() => { setInstant(true); setCurrent(null); setPhase('idle'); &#125;&#125;>
+          切到即时
+        </button>
+      </div>
+
+      <div className="row" style=&#123;&#123; gap: 8 &#125;&#125;>
+        {PRODUCTS.map((p) => (
+          <button key={p.slug} className="muted" onClick={() => open(p)}>
+            {p.name}
+          </button>
+        ))}
+      </div>
+
+      <div className="card" style=&#123;&#123; marginTop: 12, minHeight: 110 &#125;&#125;>
+        {!current && <p className="muted">点击上方商品，模拟一次客户端导航。</p>}
+        {current && instant && phase === 'shell' && (
+          <div>
+            <h3 style=&#123;&#123; margin: 0 &#125;&#125;>{current.name}</h3>
+            <p className="muted">▱▱ 价格与库存正在流式加载…（外壳已即时呈现）</p>
+          </div>
+        )}
+        {current && phase === 'done' && (
+          <div>
+            <h3 style=&#123;&#123; margin: 0 &#125;&#125;>{current.name}</h3>
+            <p style=&#123;&#123; margin: '4px 0' &#125;&#125;>¥{current.price}</p>
+            <span className="badge">实时库存：充足</span>
+          </div>
+        )}
+        {current && !instant && phase !== 'done' && (
+          <p className="muted">白屏等待中… 900ms 内界面无响应</p>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **误区一：开了开关就全站即时。** 开关只给能力，路由仍要按 Stream/Cache/Block 改造，由 Instant Insights 逐个驱动。
+- **误区二：在页面顶部 `await params`。** 这会把外壳绑死到某一个 URL，动态段页应把 `params` Promise 直接下传给 Suspense 内的子组件。
+- **误区三：开发环境里感觉不即时就以为没生效。** 开发模式不执行预取，导航手感以 `next start`（生产）为准；但校验错误在开发时就能看到。
+
+## 小结
+
+- 即时导航 = `cacheComponents` + `partialPrefetching` 两个开关，加上对每个动态 `await` 做 Stream/Cache/Block 三选一
+- 缓存内容与静态内容组成点击瞬间可见的外壳，未缓存内容在 Suspense 回退之后流式补入
+- 暂时无法改造的段用 `export const instant = false` 显式允许阻塞
+
+下一篇进阶篇，我们拆开外壳请求的合并原理、`<Link prefetch={true}>` 的 URL 级预取成本，以及 Instant Insights 给出的可操作错误。
+
+# 7. Server Actions 与表单变更
+
+## 从「写一个 API 路由」到「直接写函数」
+
+在 App Router 之前，一次表单变更通常意味着：写一个 API 路由 → 客户端 `fetch('/api/...', { method: 'POST' })` → 手动处理 loading → 提交后再重新取数刷新页面。
+
+**Server Actions** 把这条链路压缩成一个异步函数：在函数顶部写 `'use server'`，它就只在服务端执行；把它直接绑给 `<form>`，提交、序列化、重渲染全部由框架接管。
+
+- 传给 `<form>` 的 `action` 属性，或传给 `<button>` 的 `formAction` 属性
+- 或在客户端组件的事件处理器、`useEffect` 中通过 `startTransition` 调用
+
+底层使用 HTTP `POST`，也只有 POST 能调用它们。
+
+## 定义一个 Server Action
+
+`'use server'` 可以标在文件顶部（该文件所有导出都是 Server Function，客户端组件只能以这种方式导入），也可以标在单个异步函数内部：
+
+```ts title="src/app/actions.ts —— 模块级 'use server'，可被任意组件导入"
+'use server';
+
+export async function createPost(formData: FormData) {
+  const title = formData.get('title');
+  const content = formData.get('content');
+
+  // 服务端：写库（这里省略真实数据库调用）
+  await db.post.create({ data: { title: String(title), content: String(content) } });
+}
+```
+
+字段很多时，用原生 `Object.fromEntries(formData)` 一次性转成对象即可（注意结果里会带 `$ACTION_` 前缀的框架字段）。
+
+## 最小表单：零客户端 JS
+
+在服务端组件里把 action 直接绑给表单，不需要任何 `'use client'`：
+
+```tsx title="src/app/posts/new/page.tsx"
+import { createPost } from '@/app/actions';
+
+export default function NewPostPage() {
+  return (
+    <form action={createPost}>
+      <label>
+        标题
+        <input type="text" name="title" required />
+      </label>
+      <label>
+        正文
+        <textarea name="content" required />
+      </label>
+      <button type="submit">发布</button>
+    </form>
+  );
+}
+```
+
+::: tip 渐进增强是默认行为
+服务端组件中的表单**在 JavaScript 未加载或被禁用时照样可以提交**——浏览器原生 POST 到当前路由，服务端执行函数后返回新页面。客户端组件里的表单则会在 JS 未就绪时排队等待水合，水合后提交不再整页刷新。
+:::
+
+## 三种调用方式
+
+| 调用位置 | 写法 | 适用场景 |
+| --- | --- | --- |
+| 服务端组件表单 | `<form action={fn}>` | 标准提交，支持无 JS |
+| 客户端组件表单 | 导入模块级 action，`<form action={fn}>` | 需要错误展示、pending 反馈、乐观更新 |
+| 客户端事件 | `onClick` 里包 `startTransition` 调用 | 点赞、计数等非表单触发 |
+
+在客户端组件里**不能定义** Server Function，只能从 `'use server'` 模块导入。也可以把 action 作为 props 从服务端组件下发给客户端组件。
+
+## useActionState：表单三态
+
+只要需要「校验错误回显」或「提交中禁用按钮」，就把表单放进客户端组件，用 React 19 的 `useActionState`。它返回三元组：**状态、包装后的 action、pending 布尔值**。
+
+服务端函数的签名要相应改变：**第一个参数是上一次的状态（或初始状态），FormData 退居第二**：
+
+```ts title="src/app/actions.ts —— 带校验与状态返回"
+'use server';
+
+export type FormState = { message: string; ok: boolean };
+
+export async function createUser(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const email = String(formData.get('email') ?? '');
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    return { ok: false, message: '邮箱格式不正确' }; // 校验失败，状态回显
+  }
+  await db.user.create({ data: { email } });
+  return { ok: true, message: '创建成功' };
+}
+```
+
+```tsx title="src/app/ui/signup-form.tsx"
+'use client';
+
+import { useActionState } from 'react';
+import { createUser, type FormState } from '@/app/actions';
+
+const initialState: FormState = { message: '', ok: false };
+
+export function SignupForm() {
+  // 三态：state（服务端返回）、formAction（绑给表单）、pending（提交中）
+  const [state, formAction, pending] = useActionState(createUser, initialState);
+
+  return (
+    <form action={formAction}>
+      <input type="email" name="email" required />
+      <button type="submit" disabled={pending}>
+        {pending ? '提交中…' : '注册'}
+      </button>
+      <p aria-live="polite" style=&#123;&#123; color: state.ok ? 'green' : 'crimson' &#125;&#125;>
+        {state.message}
+      </p>
+    </form>
+  );
+}
+```
+
+`aria-live="polite"` 让错误/成功消息被读屏器播报，是表单可访问性的标配。
+
+## 一次往返同时带回数据与 UI
+
+当 action 内调用了 `updateTag`、`revalidatePath`、`refresh()`、设置/删除 cookie 或 `redirect()` 时，Next.js 会在**同一个 POST 往返**里执行函数并重渲染当前路由，响应中的 Flight 流同时包含：
+
+1. action 的返回值（供 `useActionState` 或 await 使用）
+2. 当前路由新的 RSC Payload（客户端直接提交，无需二次请求）
+
+这是 Server Actions 与「手写 API + 手动刷新」相比最核心的效率差异。
+
+::: warn 不要把动作当成可随意访问的内部接口
+Server Action 通过对所在页面发 POST 调用，任何能发 POST 的人都能直接请求它，不经过你的 UI。框架做了 CSRF 校验（比对 Origin/Host）、1MB 请求体限制、加密 action id，但**鉴权必须在每个函数内部重复做**，「这个表单只在登录后渲染」不是安全边界。
+:::
+
+## 演练场：三态表单
+
+下面的演练场用一个本地异步函数模拟 Server Action（真实项目里换成从 `'use server'` 模块导入的函数，`useActionState` 的用法完全一致）。试试输入非法邮箱、提交期间观察按钮、成功后看消息颜色。
+
+```tsx title="useActionState 三态演练" playground
+'use client';
+
+import { useActionState } from 'react';
+
+type State = { message: string; ok: boolean };
+
+// 模拟服务端校验 + 500ms 网络延迟
+async function fakeAction(prev: State, formData: FormData): Promise<State> {
+  const email = String(formData.get('email') ?? '');
+  await new Promise((r) => setTimeout(r, 500));
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    return { message: '邮箱格式不正确', ok: false };
+  }
+  return { message: `已向 ${email} 发送确认邮件`, ok: true };
+}
+
+export default function App() {
+  const [state, action, pending] = useActionState(fakeAction, {
+    message: '',
+    ok: false,
+  });
+
+  return (
+    <div>
+      <h3>注册（模拟 Action）</h3>
+      <form action={action}>
+        <label style=&#123;&#123; display: 'block', marginBottom: 8 &#125;&#125;>
+          邮箱
+          <input
+            type="text"
+            name="email"
+            placeholder="you@example.com"
+            style=&#123;&#123; width: '100%', marginTop: 4 &#125;&#125;
+          />
+        </label>
+        <button type="submit" className="primary" disabled={pending}>
+          {pending ? '提交中…' : '注册'}
+        </button>
+      </form>
+      <div className="card" style=&#123;&#123; marginTop: 12, minHeight: 24 &#125;&#125;>
+        {state.message ? (
+          <span style=&#123;&#123; color: state.ok ? '#059669' : '#dc2626' &#125;&#125; aria-live="polite">
+            {state.ok ? '✓ ' : '✕ '}
+            {state.message}
+          </span>
+        ) : (
+          <span className="muted">服务端返回的状态会显示在这里</span>
+        )}
+      </div>
+      <p className="muted" style=&#123;&#123; fontSize: 13 &#125;&#125;>
+        提示：输入不带 @ 的内容可以看到校验失败态。
+      </p>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **误区一：在客户端组件里写 `'use server'`。** 客户端只能导入模块级 action，定义留在服务端文件。
+- **误区二：action 里不做鉴权，只靠 UI 隐藏按钮。** Action 可被直接 POST，必须函数内鉴权。
+- **误区三：忘记 `useActionState` 改签名。** 接入 hook 后服务端函数第一个参数是 `prevState`，FormData 后移。
+- **误区四：用 `Promise.all` 并行调多个 Action。** 客户端对 Server Actions 是**串行 dispatch**；要并行就把并行逻辑放进同一个 Action 内部。
+
+## 小结
+
+- Server Action 是标记 `'use server'` 的异步函数，通过表单 `action` 或 transition 调用，底层走 POST
+- 服务端组件表单天然渐进增强，禁用 JS 也能提交；`useActionState` 提供状态、action、pending 三态
+- 一次 Action 往返可以同时完成执行、缓存失效与路由重渲染；每个 Action 都是不可信入口，鉴权必须内置
+
+下一篇进阶篇，我们处理真实体验的三个关键件：`useFormStatus` 提交按钮、`useOptimistic` 乐观更新，以及 action 之后的缓存失效与 `after()` 后台任务。
+
+# 8. 渲染模式与静态生成
+
+## 渲染时机：不是二选一，但先从二分法学起
+
+一条路由在什么时刻渲染，决定了它的成本与新鲜度：
+
+- **构建期（SSG）**：`next build` 时生成 HTML，之后每个请求都直接拿静态产物，CDN 边缘即可响应
+- **请求期（SSR/动态）**：每次请求由 Node 服务执行组件，数据最新但每次都有服务器成本
+
+Next.js 16 的默认是**动态优先**：你不做任何缓存声明，路由就在请求期执行；但只要路由不碰「请求时输入」，框架会自动在构建期把它预渲染成静态产物，**不需要任何 `force-static`**。
+
+::: info 16.x 没有「隐式静态化白名单」负担
+15 及更早版本里 `fetch` 默认缓存，很多路由因此「意外地静态」。16 里动态是默认语义，静态是「没有动态输入」时的自然结果——读懂下面的动态输入清单，就掌握了判定规则。
+:::
+
+## 什么让一条路由变动态
+
+在未启用 Cache Components 的经典模型下，组件（或其渲染链上的任意位置）访问以下任一项，该路由就在请求期渲染：
+
+| 动态输入 | 获取方式 | 典型用途 |
+| --- | --- | --- |
+| Cookie | `await cookies()` | 会话、主题、购物车 |
+| 请求头 | `await headers()` | UA、鉴权头、地域 |
+| 查询参数 | page props 的 `await searchParams` | 搜索、筛选、分页 |
+| 动态段（未预渲染路径） | page props 的 `await params` | `/blog/[slug]` |
+| 显式动态声明 | `export const dynamic = 'force-dynamic'`（旧模型） | 强制请求期 |
+
+注意三个请求 API 在 16 中**全部是异步的**，必须 `await`。反过来，页面只是 `async` 并 `await` 一个纯函数取数，并不会让它变动态——构建期一样可以 await。
+
+## 用 `generateStaticParams` 预渲染动态段
+
+动态段 `[slug]` 的值在构建时未知，默认按请求渲染。如果你能在构建期枚举一批路径，`generateStaticParams` 告诉框架「这些路径提前生成」：
+
+```tsx title="src/app/blog/[slug]/page.tsx —— 构建期生成已知文章"
+interface Post {
+  slug: string;
+  title: string;
+  content: string;
+}
+
+export async function generateStaticParams() {
+  const posts = await fetch('https://api.example.com/posts').then((r) => r.json());
+  // 返回数组，每项是一组 params；这些页面进入构建产物
+  return posts.map((post: Post) => ({ slug: post.slug }));
+}
+
+export default async function BlogPostPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params; // 16：params 是 Promise，必须 await
+  const post = await fetch(`https://api.example.com/posts/${slug}`).then((r) => r.json());
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <div>{post.content}</div>
+    </article>
+  );
+}
+```
+
+构建行为是：`generateStaticParams` 返回的每条路径生成一份静态 HTML；没返回的路径在**首次请求时按需生成**（默认 `dynamicParams` 行为），生成后同样缓存。数据不存在时在组件内调用 `notFound()` 即返回 404。
+
+::: tip 层级参数
+嵌套动态段（如 `[category]/[product]`）中，内层的 `generateStaticParams` 会收到外层的 `params`（已解析为普通对象，非 Promise），可以据此为每个分类生成各自的商品路径。
+:::
+
+## ISR：秒级 `revalidate`（经典模型）
+
+静态页面最怕内容更新要重新发版。**增量静态再生（ISR）** 在两者之间取平衡：页面仍按静态产物服务，但隔一段时间后在后台再生。
+
+```tsx title="src/app/blog/[slug]/page.tsx —— 60 秒级 ISR（未开 cacheComponents 时）"
+export const revalidate = 60; // 单位秒；超过 60 秒后的首个请求触发后台再生
+
+export async function generateStaticParams() {
+  const posts = await fetch('https://api.example.com/posts').then((r) => r.json());
+  return posts.map((post: { slug: string }) => ({ slug: post.slug }));
+}
+```
+
+一次请求的完整时序：
+
+::: steps
+1. 构建时：枚举到的文章各生成一份静态页面
+2. 60 秒内：所有请求直接拿缓存的静态页面，零服务器渲染
+3. 超过 60 秒后的第一个请求：**仍立即拿到旧页面**，框架在后台开始再生
+4. 再生成功：新页面入缓存，之后请求拿到新版本；再生失败则继续用旧页面，不会报错给用户
+:::
+
+这就是 stale-while-revalidate 在页面层的形态。还有第二种触发方式——**按需再生**：在 Server Action 或 Route Handler 里调用 `revalidatePath('/blog')` 或 `revalidateTag(tag, profile)`，内容编辑后立即安排再生，不必等秒数窗口。
+
+## 三种基本渲染模式对比
+
+| 模式 | 渲染时机 | 新鲜度 | 服务器成本 | 典型场景 |
+| --- | --- | --- | --- | --- |
+| SSG | 构建期 | 发版才更新（或按需再生） | 近乎为零 | 文档、营销页、关于页 |
+| ISR | 构建期 + 后台再生 | 秒级/事件级滞后 | 仅再生瞬间 | 博客、商品详情、内容站 |
+| SSR（动态） | 每次请求 | 最新 | 每请求一次 | 仪表盘、个性化、实时数据 |
+
+## 判定结果在哪看
+
+`next build` 结束时打印的 Route 表直接告诉你答案（第 1 章已见过标记）：
+
+- `○`：静态，构建期产出 HTML
+- `ƒ`：动态，请求时执行
+- `●`（启用 ISR 时）：SSG + 增量再生
+
+::: warn 不要为了「让页面静态」而 `force-static`
+16 里只要没有动态输入，页面自然静态；`export const dynamic = 'force-static'` 是旧时代的开关，在 Cache Components 开启后还会直接报错。让判定「自然发生」，需要动态时就明确地使用请求时 API 或下一篇讲的 `connection()`。
+:::
+
+## 演练场：渲染时序模拟器
+
+下面的模拟器把三种模式画成时间线。选择模式后连续点「发起请求」，再点「内容更新」观察：SSG 永远是构建快照，SSR 每次都是最新，ISR 在跨过再生窗口后先给旧值、再换新版。
+
+```tsx title="三种渲染模式时序" playground
+'use client';
+
+import { useRef, useState } from 'react';
+
+type Mode = 'SSG' | 'ISR' | 'SSR';
+
+export default function App() {
+  const [mode, setMode] = useState<Mode>('ISR');
+  const [contentVersion, setContentVersion] = useState(1);
+  const [servedVersion, setServedVersion] = useState(1);
+  const [logs, setLogs] = useState<string[]>(['构建期：生成页面 v1']);
+  const [lastAt, setLastAt] = useState(0);
+  const now = useRef(0);
+
+  function request() {
+    now.current += 1;
+    if (mode === 'SSG') {
+      setServedVersion(1);
+      setLogs((l) => [...l, `t=${now.current} 请求 → 静态产物 v1`]);
+    } else if (mode === 'SSR') {
+      setServedVersion(contentVersion);
+      setLogs((l) => [...l, `t=${now.current} 请求 → 服务器实时渲染 v${contentVersion}`]);
+    } else {
+      // ISR：窗口设为 2 个时间单位，过期后首个请求先服务旧值并后台再生
+      const expired = now.current - lastAt >= 2;
+      if (!expired || lastAt === 0) {
+        setLogs((l) => [...l, `t=${now.current} 请求 → 缓存 v${servedVersion}`]);
+      } else {
+        setLogs((l) => [
+          ...l,
+          `t=${now.current} 请求 → 先给旧 v${servedVersion}，后台再生中…`,
+        ]);
+        setTimeout(() => {
+          setServedVersion(contentVersion);
+          setLogs((l) => [...l, `后台再生完成 → 缓存更新为 v${contentVersion}`]);
+        }, 400);
+      }
+      setLastAt(now.current);
+    }
+  }
+
+  function updateContent() {
+    setContentVersion((v) => v + 1);
+    setLogs((l) => [...l, `数据源更新：最新内容现在是 v${contentVersion + 1}`]);
+    if (mode === 'SSR') setServedVersion(contentVersion + 1);
+  }
+
+  return (
+    <div>
+      <div className="row" style=&#123;&#123; gap: 8, marginBottom: 12 &#125;&#125;>
+        {(['SSG', 'ISR', 'SSR'] as Mode[]).map((m) => (
+          <button key={m} className={mode === m ? 'primary' : 'muted'} onClick={() => setMode(m)}>
+            {m}
+          </button>
+        ))}
+      </div>
+      <div className="row" style=&#123;&#123; gap: 8, marginBottom: 12 &#125;&#125;>
+        <button className="muted" onClick={request}>发起请求</button>
+        <button className="muted" onClick={updateContent}>数据源更新</button>
+      </div>
+      <div className="card">
+        <p style=&#123;&#123; margin: 0 &#125;&#125;>
+          当前页面展示：<strong>v{servedVersion}</strong>
+          <span className="muted">（数据源最新：v{contentVersion}）</span>
+        </p>
+      </div>
+      <pre
+        style=&#123;&#123;
+          marginTop: 12,
+          padding: 12,
+          background: '#f4f4f5',
+          borderRadius: 8,
+          fontSize: 12,
+          maxHeight: 160,
+          overflow: 'auto',
+        &#125;&#125;
+      >
+        {logs.slice(-8).join('\n')}
+      </pre>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **误区一：`async` 组件就是动态组件。** 构建期一样可以 await，关键是有没有请求时输入。
+- **误区二：忘记 await `params`/`searchParams`。** 16 中它们是 Promise，漏 await 拿到的是 Promise 对象而非数据。
+- **误区三：以为 ISR 过期瞬间用户会等。** 过期后的第一个请求仍拿旧页，再生在后台完成。
+- **误区四：ISR 和 `force-static` 混用。** 静态声明与秒级再生相互矛盾，按需选一种模型。
+
+## 小结
+
+- 16 动态优先：没有请求时输入的路由自动静态；`cookies()`、`headers()`、`searchParams`、未预渲染的 `params` 使路由动态
+- `generateStaticParams` 在构建期枚举路径，未覆盖路径首次请求时按需生成
+- 经典模型下 `export const revalidate = N` 提供页面级 stale-while-revalidate，也可用 `revalidatePath` 按需再生
+
+下一篇进阶篇，我们进入 Cache Components 时代的 ISR、`connection()` 软动态，以及静态与动态如何被收编进同一条流式响应。
+
+# 9. Route Handlers 与 proxy.ts
+
+## 当你需要一个「真正的 HTTP 端点」
+
+Server Actions 覆盖了表单变更，但有些能力天然属于裸 HTTP 端点：给第三方系统的 **Webhook 回调**、给移动端/外部客户端的 **JSON API**、SSE 或 LLM 的**流式响应**、RSS/XML 等非 UI 内容。
+
+**Route Handlers** 就是 App Router 里的 API 端点：在 `app/` 目录任意层级放一个 `route.ts`，导出按 HTTP 方法命名的异步函数即可。它基于标准 Web API——`Request`、`Response`，外加 Next 扩展的 `NextRequest`/`NextResponse`。
+
+## 最小端点：GET 与 POST
+
+```ts title="src/app/api/items/route.ts"
+import { NextRequest } from 'next/server';
+
+// GET /api/items —— 返回 JSON
+export async function GET() {
+  const items = await db.item.findMany();
+  return Response.json(items); // 标准 Response.json，Content-Type 自动为 application/json
+}
+
+// POST /api/items —— 读取 JSON 请求体
+export async function POST(request: NextRequest) {
+  const body = await request.json(); // 请求体只在需要时读取
+  if (typeof body.name !== 'string') {
+    return Response.json({ error: 'name 必填' }, { status: 400 });
+  }
+  const item = await db.item.create({ data: { name: body.name } });
+  return Response.json(item, { status: 201 });
+}
+```
+
+支持的方法导出：`GET`、`POST`、`PUT`、`PATCH`、`DELETE`、`HEAD`、`OPTIONS`。未导出的方法被调用时，框架自动返回 **405 Method Not Allowed**。
+
+::: warn 默认不缓存
+Route Handlers 默认在请求时执行、不缓存。经典模型下只有 `GET` 可以通过 `export const dynamic = 'force-static'` 显式选择静态；其它方法即使和静态 GET 写在同一文件里也绝不缓存。Cache Components 开启后，GET 与页面遵循同一套「无动态输入则预渲染」模型（进阶篇细讲）。
+:::
+
+## 动态段：`await ctx.params`
+
+Route Handler 可以和页面共用动态段目录，参数通过第二个参数 `context` 传入，类型用全局的 `RouteContext<'/路由'>` 辅助类型。16 中 `params` 同样是 **Promise**：
+
+```ts title="src/app/api/users/[id]/route.ts"
+import type { NextRequest } from 'next/server';
+
+export async function GET(
+  _request: NextRequest,
+  ctx: RouteContext<'/users/[id]'>
+) {
+  const { id } = await ctx.params; // 16：动态参数必须 await
+  const user = await db.user.findById(id);
+  if (!user) {
+    return Response.json({ error: '用户不存在' }, { status: 404 });
+  }
+  return Response.json({ id: user.id, name: user.name });
+}
+```
+
+查询字符串直接从标准 URL 解析：`new URL(request.url).searchParams.get('q')`，无需额外 API。
+
+## 流式响应
+
+返回 `ReadableStream` 即可获得流式输出——这是接入 LLM、日志推送等场景的基础形态，全程只使用 Web 标准：
+
+```ts title="src/app/api/stream/route.ts —— 分片返回"
+const encoder = new TextEncoder();
+
+async function* makeChunks() {
+  yield encoder.encode('data: 第一片内容\n\n');
+  await new Promise((r) => setTimeout(r, 300));
+  yield encoder.encode('data: 第二片内容\n\n');
+  yield encoder.encode('data: [DONE]\n\n');
+}
+
+function iteratorToStream(asyncIterator: AsyncGenerator<Uint8Array>) {
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await asyncIterator.next();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+  });
+}
+
+export async function GET() {
+  return new Response(iteratorToStream(makeChunks()), {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    },
+  });
+}
+```
+
+## 与 `page.tsx` 的共存规则
+
+Route 是最低层级的路由原语：它**不参与布局，也不参与客户端导航**。文件树层面有一条硬规则——同一层级不能同时存在 `route.ts` 和 `page.tsx`：
+
+| 文件组合 | 结果 |
+| --- | --- |
+| `app/page.tsx` + `app/route.ts` | 冲突，构建报错 |
+| `app/page.tsx` + `app/api/route.ts` | 合法（不同层级） |
+| `app/[user]/page.tsx` + `app/api/route.ts` | 合法（不同层级） |
+
+::: tip 命名建议
+面向页面的数据接口统一放在 `src/app/api/` 下；需要 Webhook 的放 `src/app/api/webhook/...`。这样 `/api/*` 可以在 proxy 与 CDN 层被整体识别和施加策略（第 9.2 篇会用到）。
+:::
+
+## Route Handler 还是 Server Action
+
+两者都跑在服务端，按调用方与职责选择：
+
+| 维度 | Route Handler | Server Action |
+| --- | --- | --- |
+| 调用方 | 任意 HTTP 客户端、第三方系统 | 你的 React UI（表单/transition） |
+| 方法 | 任意 HTTP 方法 | 仅 POST |
+| 响应 | 完全自定义（JSON、流、XML、状态码） | Flight 流（返回值 + 重渲染） |
+| 缓存失效 | 可调 `revalidateTag` 等 | `updateTag` 等全部手段 |
+| 适用 | Webhook、开放 API、流式 | 表单变更、与 UI 联动的写操作 |
+
+## 演练场：API 调试台
+
+下面的调试台模拟向 Route Handler 发请求：选择方法、填路径与请求体，查看返回的状态码、JSON 与关键响应头。真实项目里同样的输入直接交给 `fetch('/api/items', ...)` 即可。
+
+```tsx title="Route Handler 请求调试台" playground
+'use client';
+
+import { useState } from 'react';
+
+type Method = 'GET' | 'POST' | 'DELETE';
+
+// 模拟 src/app/api/items/route.ts 的服务端行为
+function fakeHandler(method: Method, path: string, body: string) {
+  if (path === '/api/items' && method === 'GET') {
+    return { status: 200, json: [{ id: 1, name: '机械键盘' }, { id: 2, name: '显示器' }] };
+  }
+  if (path === '/api/items' && method === 'POST') {
+    try {
+      const parsed = JSON.parse(body || '{}');
+      if (typeof parsed.name !== 'string') throw new Error();
+      return { status: 201, json: { id: 3, name: parsed.name } };
+    } catch {
+      return { status: 400, json: { error: '请求体必须是包含 name 的 JSON' } };
+    }
+  }
+  if (/^\/api\/items\/\d+$/.test(path) && method === 'DELETE') {
+    return { status: 200, json: { ok: true } };
+  }
+  return { status: 404, json: { error: '路由不存在或方法不允许（405）' } };
+}
+
+export default function App() {
+  const [method, setMethod] = useState<Method>('GET');
+  const [path, setPath] = useState('/api/items');
+  const [body, setBody] = useState('{"name":"人体工学椅"}');
+  const [resp, setResp] = useState<{ status: number; json: unknown } | null>(null);
+
+  function send() {
+    setResp(fakeHandler(method, path, body));
+  }
+
+  return (
+    <div>
+      <div className="row" style=&#123;&#123; gap: 8, marginBottom: 8 &#125;&#125;>
+        {(['GET', 'POST', 'DELETE'] as Method[]).map((m) => (
+          <button key={m} className={method === m ? 'primary' : 'muted'} onClick={() => setMethod(m)}>
+            {m}
+          </button>
+        ))}
+        <input value={path} onChange={(e) => setPath(e.target.value)} style=&#123;&#123; flex: 1 &#125;&#125; />
+      </div>
+      {method === 'POST' && (
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={2}
+          style=&#123;&#123; width: '100%', fontFamily: 'monospace', fontSize: 12, marginBottom: 8 &#125;&#125;
+        />
+      )}
+      <button className="primary" onClick={send}>发送请求</button>
+
+      <div className="card" style=&#123;&#123; marginTop: 12 &#125;&#125;>
+        {resp ? (
+          <>
+            <span className="badge" style=&#123;&#123; color: resp.status < 300 ? '#059669' : '#dc2626' &#125;&#125;>
+              HTTP {resp.status}
+            </span>
+            <pre style=&#123;&#123; margin: '8px 0 0', fontSize: 12 &#125;&#125;>
+              {JSON.stringify(resp.json, null, 2)}
+            </pre>
+          </>
+        ) : (
+          <span className="muted">响应将显示在这里。试试 POST 一个非法 JSON 看 400。</span>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **误区一：忘记函数名大写。** 必须导出 `GET`/`POST`，写成 `get` 不会被识别。
+- **误区二：在同层放 `page.tsx` 和 `route.ts`。** 直接冲突，把子路径挪进 `api/` 等子目录。
+- **误区三：16 里直接解构 `ctx.params`。** params 是 Promise，必须 `await`。
+- **误区四：把给 UI 的变更写成 Route Handler。** 与 UI 联动的写操作优先用 Server Action，自动获得单往返重渲染。
+
+## 小结
+
+- Route Handler 是 `app/` 树中的 `route.ts`，导出标准 HTTP 方法函数，签名是 `(request, context)`
+- 默认动态不缓存；动态参数 `await ctx.params`；返回 JSON、流或任意非 UI 内容都用标准 `Response`
+- 它与 page 不能同级共存，职责上与 Server Action 按「开放端点 vs UI 变更」分工
+
+下一篇进阶篇，我们处理 Webhook 原始 body 校验、CORS 与缓存头、段配置，并正式认识 16 的 Node 代理层 `proxy.ts`。
+
+# 10. 样式、静态资源与 Metadata
+
+## 样式方案的选择
+
+Next.js 不对样式框架做强制绑定，官方一等支持两类常规方案：**Tailwind CSS**（实用类优先，官方脚手架默认）与 **CSS Modules**（组件级作用域，零额外依赖）。Sass、CSS-in-JS 等生态方案也都可用。选型首先是团队习惯问题，其次看场景：
+
+| 方案 | 作用域 | 适合场景 | 上手成本 |
+| --- | --- | --- | --- |
+| Tailwind v4 | 类名即样式（v4 有层叠/源码驱动） | 快速迭代、设计系统统一 | 需要熟悉令牌与类名 |
+| CSS Modules | 每个 `.module.css` 自动哈希隔离 | 组件库、偏好原生 CSS 的团队 | 零额外概念 |
+| Sass | 嵌套/混入/变量 | 存量 SCSS 资产迁移 | 需装 `sass` 包 |
+| CSS-in-JS | 运行时/构建时注入 | 动态主题、强运行时样式 | 需配置 RSC 样式注册 |
+
+## Tailwind v4：装包、PostCSS、一行 import
+
+v4 的接入方式与 v3 差别明显：不再需要 `tailwind.config.js` 和 `@tailwind base/components/utilities` 三条指令，配置收敛进 CSS 本身。
+
+```bash title="安装依赖"
+pnpm add -D tailwindcss @tailwindcss/postcss
+```
+
+```js title="postcss.config.mjs —— v4 唯一的 PostCSS 插件配置"
+const config = {
+  plugins: {
+    '@tailwindcss/postcss': {},
+  },
+};
+
+export default config;
+```
+
+```css title="src/app/globals.css —— 入口与设计令牌"
+@import 'tailwindcss';
+
+/* v4 的设计令牌写在 CSS 里：--color-* 会生成 bg-/text- 等实用类 */
+@theme {
+  --color-brand: #1d6ff2;
+  --color-brand-dark: #1557c0;
+  --color-surface: #ffffff;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* 基础层：全局重置、body 默认值 */
+body {
+  color: #18181b;
+  background: var(--color-surface);
+}
+```
+
+```tsx title="src/app/layout.tsx —— 全局样式只在 root layout 引入一次"
+import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'Next 16 教程',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="zh-CN">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+::: warn 全局 CSS 的引入边界
+官方规定：非模块的全局样式表**只能在 root layout 中引入**（例外是外部 npm 包的样式表，可以在任意组件 import）。虽然其它 layout/page 也能引全局 CSS，但客户端导航离开对应路由时样式**不会被移除**，可能污染整个应用——除 root layout 外不要这样做。
+:::
+
+## CSS Modules：默认作用域隔离
+
+不想引入 Tailwind 时，CSS Modules 是内置方案：文件名以 `.module.css` 结尾，import 得到的是一个类名映射对象，类名在构建期被哈希，天然防冲突。
+
+```css title="src/app/ui/button.module.css"
+.primary {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--color-brand);
+  color: white;
+}
+
+.primary:hover {
+  background: var(--color-brand-dark);
+}
+```
+
+```tsx title="src/app/ui/button.tsx"
+import styles from './button.module.css';
+
+export function Button({ children }: { children: React.ReactNode }) {
+  return <button className={styles.primary}>{children}</button>; // 编译后类似 button_primary__a1b2c
+}
+```
+
+需要全局选择器（如覆盖第三方组件）时用 `:global(.foo)`；条件组合直接 `clsx`/`cx` 之类的小工具拼接 `styles.xxx` 即可。生产构建会自动把模块 CSS 合并成最小的 chunk，随路由按需加载。
+
+::: tip 两种方案可以共存
+Tailwind 做布局与间距、CSS Modules 写复杂组件局部样式是常见组合。冲突面很小：Tailwind 类是全局命名，Modules 类是哈希命名，各管各的。
+:::
+
+## Sass：存量资产的平滑入口
+
+执行 `pnpm add -D sass` 后即可直接 import `.scss`/`.module.scss`，支持嵌套与 `@use`，零额外配置。需要自定义选项时在 `next.config.ts` 的 `sassOptions` 中设置：例如 `implementation: 'sass-embedded'` 切换为更快的嵌入式实现，或用 `includePaths`、`quietDeps` 管理大型样式库的依赖噪声。
+
+## 常见误区
+
+- **误区一：沿用 v3 三件套指令。** v4 只需要 `@import 'tailwindcss'`，令牌写在 `@theme`。
+- **误区二：在页面里引第二份全局 CSS。** 客户端导航后不会卸载，会造成跨页样式泄漏。
+- **误区三：CSS Modules 里写死全局类名。** 默认就是局部作用域，需要全局时显式 `:global()`。
+- **误区四：装了 Tailwind 但忘配 PostCSS。** 没有 `@tailwindcss/postcss` 插件，`@import 'tailwindcss'` 不会被处理。
+
+## 演练场：设计令牌调色板
+
+Tailwind v4 的核心心智是「令牌 → 实用类」。下面的调色板模拟 `@theme` 中定义的一组令牌，点击色板即可看到它在按钮、徽章等组件上的效果切换。
+
+```tsx title="@theme 令牌效果预览" playground
+'use client';
+
+import { useState } from 'react';
+
+const TOKENS: Record<string, { brand: string; dark: string; label: string }> = {
+  海洋蓝: { brand: '#1d6ff2', dark: '#1557c0', label: '默认品牌色' },
+  森林绿: { brand: '#059669', dark: '#047857', label: '增长/成功向产品' },
+  落日橙: { brand: '#ea580c', dark: '#c2410c', label: '内容/社区向产品' },
+};
+
+export default function App() {
+  const [name, setName] = useState('海洋蓝');
+  const t = TOKENS[name];
+
+  return (
+    <div>
+      <div className="row" style=&#123;&#123; gap: 8, marginBottom: 16 &#125;&#125;>
+        {Object.keys(TOKENS).map((n) => (
+          <button
+            key={n}
+            className={n === name ? 'primary' : 'muted'}
+            onClick={() => setName(n)}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+
+      <p className="muted">{t.label}（改一处 --color-brand，全站联动）</p>
+
+      <div className="row" style=&#123;&#123; gap: 12, marginTop: 12 &#125;&#125;>
+        <button
+          style=&#123;&#123;
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: 'none',
+            background: t.brand,
+            color: '#fff',
+            cursor: 'pointer',
+          &#125;&#125;
+        >
+          主按钮 bg-brand
+        </button>
+        <span
+          style=&#123;&#123;
+            padding: '4px 10px',
+            borderRadius: 999,
+            background: t.brand + '22',
+            color: t.dark,
+            fontSize: 12,
+          &#125;&#125;
+        >
+          徽章 text-brand
+        </span>
+      </div>
+
+      <div className="card" style=&#123;&#123; marginTop: 16 &#125;&#125;>
+        <div className="muted" style=&#123;&#123; fontSize: 13 &#125;&#125;>对应 globals.css：</div>
+        <pre style=&#123;&#123; margin: '8px 0 0', fontSize: 12 &#125;&#125;>
+{`@theme {
+  --color-brand: ${t.brand};
+  --color-brand-dark: ${t.dark};
+}`}
+        </pre>
+      </div>
+    </div>
+  );
+}
+```
+
+## 小结
+
+- Tailwind v4 接入三步：装 `tailwindcss @tailwindcss/postcss`、PostCSS 挂插件、`globals.css` 里 `@import 'tailwindcss'` + `@theme` 定义令牌
+- 全局样式只在 root layout 引入；CSS Modules 用 `.module.css` 获得构建期类名隔离；Sass 装包即用
+- 方案之间可以共存，按「布局实用类 + 复杂组件局部模块」的分工组织样式
+
+下一篇进阶篇，我们处理 CSS-in-JS 在服务端组件中的样式注册、`next/font` 自托管字体与 `next/image` 的 16 新默认。
+
+# 11. 认证、授权与安全
+
+## 先分清三件事
+
+安全章节的术语必须先对齐，否则后面每一步都会混：
+
+1. **认证（Authentication）**：你是谁——校验用户名密码、签发会话
+2. **会话管理（Session Management）**：如何在多个请求之间记住“你已登录”
+3. **授权（Authorization）**：你能做什么——普通用户不能进后台，编辑不能删别人的文章
+
+在 App Router 里，这三件事分别落在四个地方：**登录表单 + Server Action**（认证）、**Cookie**（会话）、**数据访问层 DAL**（授权）、**`proxy.ts`**（粗粒度路由拦截）。本篇把最小骨架搭起来，授权深水区留给进阶篇。
+
+::: info
+Next.js 不是认证框架。官方文档明确建议生产项目使用成熟认证库（如 NextAuth 类方案、iron-session、jose）。本篇用 jose 手写最小实现，是为了让你看清每一块在框架里的位置；换库后模式完全一致。
+:::
+
+## 为什么会话存在 Cookie 里
+
+HTTP 请求天然无状态，服务器要靠请求里携带的凭证认出你。把**加密后的会话载荷**放进 Cookie，浏览器之后每个请求都会自动带上，服务端用 `cookies()` 读取即可。
+
+会话 Cookie 的每个属性都不是装饰：
+
+| 属性 | 推荐值 | 作用 |
+| --- | --- | --- |
+| `httpOnly` | `true` | 客户端 JS 读不到 Cookie，XSS 偷不走会话 |
+| `secure` | `true` | 仅 HTTPS 发送（本地 http 开发除外） |
+| `sameSite` | `'lax'` | 跨站请求默认不带 Cookie，挡住大部分 CSRF |
+| `expires` / `maxAge` | 7 天等 | 到期自动失效，不发永久票据 |
+| `path` | `'/'` | 限定 Cookie 生效路径 |
+
+::: danger
+会话载荷里只放**最小且不敏感**的数据：用户 id、角色。不要放手机号、邮箱、密码——Cookie 在用户浏览器里，它不属于“服务端内部存储”。
+:::
+
+## 最小会话模块：加密、签发、销毁
+
+先生成一个密钥存进环境变量（`.env` 必须在 `.gitignore` 里）：
+
+```bash title="生成会话密钥"
+openssl rand -base64 32
+# .env
+# SESSION_SECRET=生成的密钥
+```
+
+会话模块只允许在服务端运行，首行加 `server-only`，一旦被客户端组件误导入，构建直接报错：
+
+```ts title="src/lib/session.ts —— 加密会话三件套"
+import 'server-only';
+import { SignJWT, jwtVerify } from 'jose';
+import { cookies } from 'next/headers';
+
+const encodedKey = new TextEncoder().encode(process.env.SESSION_SECRET);
+
+// 加密：把 { userId, role, expiresAt } 签成 7 天有效的 JWT
+async function encrypt(payload: { userId: string; role: string; expiresAt: Date }) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('7d')
+    .sign(encodedKey);
+}
+
+// 解密：校验失败或过期时返回 undefined，调用方按“未登录”处理
+export async function decrypt(session = '') {
+  try {
+    const { payload } = await jwtVerify(session, encodedKey, { algorithms: ['HS256'] });
+    return payload;
+  } catch {
+    return undefined;
+  }
+}
+
+// 登录成功后调用：把加密会话写进 httpOnly Cookie
+export async function createSession(userId: string, role: string) {
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const session = await encrypt({ userId, role, expiresAt });
+  const cookieStore = await cookies(); // 16.x：cookies() 必须 await
+  cookieStore.set('session', session, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    expires: expiresAt,
+    path: '/',
+  });
+}
+
+// 登出时调用：删除 Cookie
+export async function deleteSession() {
+  const cookieStore = await cookies();
+  cookieStore.delete('session');
+}
+```
+
+::: warn
+`cookies()`、`headers()` 在 16.3 全部异步，漏写 `await` 不会得到 Cookie 存储对象，而是一个 Promise。这是从旧版本升级最常见的运行时事故。
+:::
+
+## 登录与登出：Server Action 骨架
+
+认证逻辑必须运行在服务端。Server Action 天然如此，还自带渐进增强——禁用 JS 时表单依然能提交：
+
+```ts title="src/app/(auth)/actions.ts"
+'use server';
+
+import { redirect } from 'next/navigation';
+import { createSession, deleteSession } from '@/lib/session';
+import { verifyPassword, findUserByEmail } from '@/lib/user-dal';
+
+export async function login(_prev: unknown, formData: FormData) {
+  const email = String(formData.get('email') ?? '');
+  const password = String(formData.get('password') ?? '');
+
+  const user = await findUserByEmail(email);
+  // 密码必须用 bcrypt/argon2 哈希后比对，绝不明文存储
+  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    return { error: '邮箱或密码错误' };
+  }
+
+  await createSession(user.id, user.role);
+  redirect('/dashboard');
+}
+
+export async function logout() {
+  await deleteSession();
+  redirect('/login');
+}
+```
+
+客户端表单只负责采集与反馈，`useActionState` 给出三态（初始/错误/提交中）：
+
+```tsx title="登录表单的交互骨架（演练场可直接运行）" playground
+'use client';
+
+import { useActionState } from 'react';
+
+type State = { error?: string } | undefined;
+
+export default function App() {
+  // 真实项目中 login 从 'use server' 模块导入；演练场内联模拟
+  const [state, action, pending] = useActionState<State, FormData>(async () => {
+    await new Promise((r) => setTimeout(r, 600)); // 模拟服务端校验
+    return { error: '邮箱或密码错误' };
+  }, undefined);
+
+  return (
+    <div>
+      <h2>登录</h2>
+      <form action={action}>
+        <label>邮箱</label>
+        <input name="email" type="email" placeholder="you@example.com" required />
+        <label style=&#123;&#123; marginTop: 8 &#125;&#125;>密码</label>
+        <input name="password" type="password" required />
+        <button className="primary" disabled={pending} style=&#123;&#123; marginTop: 12 &#125;&#125;>
+          {pending ? '校验中…' : '登录'}
+        </button>
+      </form>
+      {state?.error && (
+        <p className="badge" style=&#123;&#123; color: '#b91c1c', marginTop: 8 &#125;&#125;>
+          {state.error}
+        </p>
+      )}
+      <p className="muted">提交按钮在 pending 期间自动禁用，防止重复提交。</p>
+    </div>
+  );
+}
+```
+
+登出按钮更简单——一个 `<form action={logout}><button type="submit">退出登录</button></form>` 即可（`logout` 从上一步的 actions 模块导入），表单自动以 POST 调用 Server Action，无需任何客户端 JS。
+
+## 在服务端组件里读会话：DAL 的起点
+
+不要在每个组件里各自解密 Cookie。建一个**数据访问层（DAL）**函数，用 React 的 `cache()` 在一次渲染中记忆结果，全树共享一次读取：
+
+```ts title="src/lib/dal.ts —— verifySession 是所有授权的入口"
+import 'server-only';
+import { cache } from 'react';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { decrypt } from '@/lib/session';
+
+export const verifySession = cache(async () => {
+  const cookie = (await cookies()).get('session')?.value;
+  const session = await decrypt(cookie);
+  if (!session?.userId) {
+    redirect('/login');
+  }
+
+  // 只返回后续渲染需要的最小字段
+  return { userId: String(session.userId), role: String(session.role) };
+});
+```
+
+之后任何服务端组件、Server Action、Route Handler 都从 `verifySession()` 取身份：
+
+```tsx title="src/app/dashboard/page.tsx"
+import { verifySession } from '@/lib/dal';
+
+export default async function DashboardPage() {
+  const session = await verifySession(); // 未登录会被重定向到 /login
+  return <h1>欢迎，用户 {session.userId}</h1>;
+}
+```
+
+## proxy.ts：粗粒度的第一道门
+
+`proxy.ts` 在路由渲染前运行，适合把**未登录用户挡在 `/dashboard` 之外**。注意它是“乐观检查”——只读 Cookie，不查数据库：
+
+```ts title="src/proxy.ts"
+import { NextResponse, type NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
+import { decrypt } from '@/lib/session';
+
+// 前缀匹配即可覆盖 /dashboard、/dashboard/settings 等子路由
+const protectedPrefix = '/dashboard';
+
+export default async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const cookie = (await cookies()).get('session')?.value;
+  const session = await decrypt(cookie); // 只解 Cookie，不查数据库
+
+  if (pathname.startsWith(protectedPrefix) && !session?.userId) {
+    return NextResponse.redirect(new URL('/login', request.nextUrl));
+  }
+  return NextResponse.next();
+}
+
+// 排除静态资源与图片优化接口，避免鉴权逻辑误伤 CSS/JS
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+};
+```
+
+::: danger
+proxy 运行在**包括预取在内的每一次路由请求**上，绝不能在里面查数据库，否则每个 `<Link>` 入屏都会打一次库。它只是“前厅保安”，真正的授权必须在数据旁边再做一次——这是进阶篇的主题。
+:::
+
+## 常见误区
+
+- **在 layout 顶层做鉴权然后 `return null`**：布局在客户端导航时不重渲染，且拦不住并行槽位和 Server Action。检查要靠近数据与被保护组件。
+- **在渲染过程中删 Cookie 实现登出**（如读 `searchParams.logout`）：渲染中禁止副作用，Next 会直接阻止。变更一律走 Action。
+- **把整个 user 对象（含密码哈希）下发给客户端组件**：跨边界传递的是序列化数据，先用 DTO 裁成最小字段。
+- **依赖 localStorage 存会话**：JS 可读意味着 XSS 可读，且无法做服务端拦截。会话票据请用 httpOnly Cookie。
+
+## 小结
+
+- 认证、会话、授权是三件事；16.3 的落点是 Action、Cookie、DAL、proxy
+- 会话 Cookie 五件套：`httpOnly`、`secure`、`sameSite: 'lax'`、过期时间、`path`
+- `cookies()` 必须 `await`；`verifySession()` 用 React `cache()` 收敛成单一入口
+- proxy 只做不查库的乐观拦截，真正的授权在数据层
+
+下一篇进入深水区：开启 Cache Components 后缓存组件不能读 Cookie 怎么办、Server Action 为什么必须在服务端重复鉴权，以及 CSP 与草稿预览。
+
+# 12. 性能优化体系
+
+## 性能优化的第一性原理
+
+没有度量的优化叫“许愿”。Next.js 16.3 的性能话题分三层：**框架默认给你的**（Turbopack、服务端组件、代码分割、预取）、**一个开关拿到的**（React Compiler、缓存组件）、**必须自己测量后决策的**（bundle 体积、懒加载边界、第三方脚本）。前两层本篇解决，第三层进阶篇展开。
+
+先记住 Core Web Vitals 三个核心指标，所有优化最终都要回答它们：
+
+| 指标 | 衡量什么 | 关注点 |
+| --- | --- | --- |
+| LCP（最大内容绘制） | 首屏主内容何时出现 | 服务端响应、图片、字体、阻塞脚本 |
+| INP（交互到下一次绘制） | 交互响应是否跟手 | 客户端 JS 体积、长任务、渲染开销 |
+| CLS（累计布局偏移） | 内容是否跳动 | 图片/广告尺寸预留、字体切换 |
+
+辅助指标还有 TTFB（首字节时间）与 FCP（首次内容绘制）。TTFB 差通常是服务端取数或动态渲染问题，与前端 bundle 无关——先定位层，再动手。
+
+::: tip
+实验室数据（Lighthouse）用于本地回归，字段数据（真实用户上报）用于决策。两者可能矛盾：高端笔记本上满分的页面，在中端手机弱网下 INP 可能不及格。
+:::
+
+## React Compiler：一行配置换掉手写记忆化
+
+React 19.2 的 Compiler 能自动分析组件，在安全的地方插入记忆化，省去手写 `useMemo`/`useCallback`/`React.memo`。Next 16 中该特性已稳定，由 SWC 只处理含 JSX/Hook 的文件，构建开销被控制在局部。
+
+先装 Babel 插件（`pnpm add -D babel-plugin-react-compiler`），再打开开关：
+
+```ts title="next.config.ts —— 开启 React Compiler"
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  reactCompiler: true, // 16.x 稳定；自动记忆化，先删冗余 useMemo 再开启
+};
+
+export default nextConfig;
+```
+
+如果项目历史包袱重，可以先用**注解模式**逐组件灰度：配置写成 `reactCompiler: { compilationMode: 'annotation' }`，然后只在准备好的组件顶部加指令：
+
+```tsx title="组件内用 'use memo' 显式 opt-in"
+export default function HeavyList() {
+  'use memo'; // 注解模式下仅该组件启用编译
+  // ...
+}
+```
+
+::: warn
+Compiler 优化的是“因引用变化导致的多余重渲染”，它**不修复 O(n²) 计算、不替代虚拟化长列表、不减少 bundle**。开启后不要立刻删掉所有手写 memo——先用性能数据确认，编译器不覆盖的场景进阶篇会列。
+:::
+
+## Turbopack 16.3：更快的 dev 与更省的内存
+
+Turbopack 在 16.x 是默认且稳定的打包器，`pnpm dev` 与 `pnpm build` 都走它，无需任何 `--turbo` 参数。16.3 在它身上有两项与日常开发强相关的变化：
+
+- **dev 内存回收**：不活跃的函数级编译结果从内存驱逐到文件系统。官方称在 vercel.com 仪表盘 50 条路由的场景中，内存占用从 21.5GB 降到约 2GB（约 90%，据官方报告）
+- **build 磁盘缓存默认开启**：`next build` 复用 `.next/cache` 中的持久化结果，CI 第二次构建明显变快——前提是 CI 缓存了这个目录（第 13 章配置）
+
+排查诡异缓存问题时可临时关闭内存驱逐：
+
+```ts title="仅排查时使用"
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackMemoryEviction: false, // 默认 'auto'
+  },
+};
+```
+
+## 度量埋点：useReportWebVitals
+
+在 App Router 中，hook 从 `next/web-vitals` 导入，且必须在客户端组件里。最佳做法是**独立一个极小客户端组件**挂进根布局，不把整棵树拖进客户端边界：
+
+```tsx title="src/app/_components/web-vitals.tsx"
+'use client';
+
+import { useReportWebVitals } from 'next/web-vitals';
+
+// 回调引用保持稳定，避免重复上报
+const report = (metric: { name: string; value: number; rating: string; id: string }) => {
+  const body = JSON.stringify(metric);
+  // 优先 sendBeacon：页面卸载时也能把数据发出去
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon('/api/vitals', body);
+  } else {
+    fetch('/api/vitals', { method: 'POST', body, keepalive: true });
+  }
+};
+
+export function WebVitals() {
+  useReportWebVitals(report);
+  return null; // 纯埋点，不渲染 UI
+}
+```
+
+```tsx title="src/app/layout.tsx —— 只挂这一个客户端叶子"
+import { WebVitals } from './_components/web-vitals';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="zh-CN">
+      <body>
+        <WebVitals />
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+回调拿到的 `metric` 含 `name`、`value`、`rating`（`good`/`needs-improvement`/`poor`）、`id`、`navigationType`（含 BFCache 恢复等场景）。服务端用一个 Route Handler 落库或转发给分析系统即可。
+
+## 第三方脚本：next/script 的四种策略
+
+第三方脚本（统计、客服、A/B）是 INP 和 LCP 的常见杀手。一律用 `next/script` 而非裸 `<script>`，并按必要性选策略：
+
+| 策略 | 时机 | 典型用途 |
+| --- | --- | --- |
+| `beforeInteractive` | 页面水合前 | 极少数必须前置的脚本 |
+| `afterInteractive`（默认） | 早期水合后 | 统计、主流分析 SDK |
+| `lazyOnload` | 浏览器空闲时 | 客服挂件、低频营销脚本 |
+| `worker`（实验性） | Web Worker（Partytown） | App Router 尚不支持，谨慎 |
+
+```tsx title="src/app/layout.tsx —— 非关键脚本延迟到空闲"
+import Script from 'next/script';
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="zh-CN">
+      <body>
+        {children}
+        {/* 客服组件不抢首屏资源 */}
+        <Script src="https://example.com/chat.js" strategy="lazyOnload" />
+      </body>
+    </html>
+  );
+}
+```
+
+::: info
+图片与字体是“免费收益”：`next/image` 自动输出现代格式、防布局抖动、按需缩放；`next/font` 自托管字体文件、消除外部请求、自动 `font-display` 优化。第 10 章已配齐，这里只需确认生产页面没有绕过它们的裸 `<img>` 与外链字体。
+:::
+
+## 演练场：看懂一份 Web Vitals 报告
+
+下面的面板模拟埋点回调收到的指标。真实数据进来时，你的判断顺序应当是：先看 `rating` 定优先级，再看指标类型决定排查层：
+
+```tsx title="Web Vitals 读数面板" playground
+'use client';
+
+import { useState } from 'react';
+
+type Metric = { name: string; value: number; unit: string; rating: 'good' | 'needs-improvement' | 'poor'; hint: string };
+
+const SAMPLE: Metric[] = [
+  { name: 'LCP', value: 2.1, unit: 's', rating: 'good', hint: '首屏主内容，查图片/TTFB' },
+  { name: 'INP', value: 340, unit: 'ms', rating: 'poor', hint: '交互卡顿，查长任务与 JS 体积' },
+  { name: 'CLS', value: 0.21, unit: '', rating: 'needs-improvement', hint: '布局跳动，查尺寸预留' },
+  { name: 'TTFB', value: 0.6, unit: 's', rating: 'needs-improvement', hint: '首字节慢，查服务端取数' },
+];
+
+const COLOR: Record<Metric['rating'], string> = {
+  good: '#047857',
+  'needs-improvement': '#b45309',
+  poor: '#b91c1c',
+};
+
+export default function App() {
+  const [onlyBad, setOnlyBad] = useState(false);
+  const list = onlyBad ? SAMPLE.filter((m) => m.rating !== 'good') : SAMPLE;
+
+  return (
+    <div>
+      <h2>Web Vitals 报告</h2>
+      <label className="row">
+        <input type="checkbox" checked={onlyBad} onChange={(e) => setOnlyBad(e.target.checked)} />
+        只看未达标项
+      </label>
+      <div className="card" style=&#123;&#123; marginTop: 12 &#125;&#125;>
+        {list.map((m) => (
+          <div key={m.name} className="row" style=&#123;&#123; justifyContent: 'space-between' &#125;&#125;>
+            <div>
+              <strong>{m.name}</strong> <span className="muted">{m.hint}</span>
+            </div>
+            <span className="badge" style=&#123;&#123; color: COLOR[m.rating] &#125;&#125;>
+              {m.value}
+              {m.unit} · {m.rating}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="muted">这份报告应先修 INP（poor），再处理 CLS 与 TTFB；LCP 已达标，无需过度优化。</p>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **开了 Compiler 就删光手写 memo 并期待提速**：它只处理引用稳定性，先看 INP 数据
+- **本地 Lighthouse 满分即收工**：缺字段数据，中端设备和弱网才是大多数用户
+- **所有第三方脚本放根布局默认策略**：非关键脚本应用 `lazyOnload`，能延迟一大块主线程工作
+- **CI 不缓存 `.next/cache` 却抱怨构建慢**：磁盘缓存只在持久化时生效
+
+## 小结
+
+- 性能工程的纪律是**度量先行**：LCP 看首屏、INP 看交互、CLS 看稳定
+- React Compiler 一行开启自动记忆化；Turbopack 16.3 带来 dev 内存回收与 build 磁盘缓存
+- `useReportWebVitals` 用独立客户端叶子接字段数据；`next/script` 按策略安置第三方代码
+
+下一篇进入进阶：用 bundle 分析器定位大依赖、划懒加载边界、调预取成本，以及 CDN 缓存与内存排查的完整决策表。
+
+# 13. 测试、可观测与部署
+
+## 先选层：Next 16.3 的测试金字塔
+
+不是所有代码都配一种测试。官方测试指南把测试分为五类，对应到 App Router 项目，推荐的投入比例如下：
+
+| 层级 | 工具 | 测什么 | 速度/成本 |
+| --- | --- | --- | --- |
+| 单元测试 | Vitest | 纯函数、schema 校验、工具方法 | 极快、大量 |
+| 组件测试 | Vitest + Testing Library（jsdom） | 同步客户端组件的交互与渲染 | 快 |
+| 集成测试 | Vitest / Playwright | 多模块协作、Action + 数据层 | 中 |
+| E2E 测试 | Playwright | 真实浏览器中的用户关键路径 | 慢、少量但关键 |
+| 快照测试 | Vitest | 稳定展示组件的输出回归 | 辅助 |
+
+::: warn
+`async` 服务端组件是 React 生态的新形态，Vitest 目前不支持直接渲染它们。官方明确建议：**异步服务端组件用 E2E 覆盖**，Vitest 只测同步组件与可抽出的纯逻辑（例如把取数与鉴权逻辑抽成纯函数后单测）。
+:::
+
+初始化两条工具链：
+
+```bash title="安装测试工具"
+pnpm add -D vitest @vitejs/plugin-react jsdom @testing-library/react @testing-library/dom vite-tsconfig-paths
+pnpm create playwright   # 生成 playwright.config.ts 与浏览器依赖
+```
+
+Vitest 配置只要三件套：TS 路径插件、React 插件、jsdom 环境：
+
+```ts title="vitest.config.mts"
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import tsconfigPaths from 'vite-tsconfig-paths';
+
+export default defineConfig({
+  plugins: [tsconfigPaths(), react()],
+  test: { environment: 'jsdom' },
+});
+```
+
+## Playwright 最小用例
+
+E2E 应跑在**生产构建**上，行为才接近真实用户。推荐让 Playwright 的 `webServer` 自动拉起服务，而不是手工开两个终端：
+
+```ts title="playwright.config.ts（关键片段）"
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  use: { baseURL: 'http://localhost:3000' }, // 用例里可直接 page.goto('/about')
+  webServer: {
+    command: 'pnpm build && pnpm start', // 对生产产物测试
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+  },
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+});
+```
+
+第一个用例覆盖最关键的导航闭环：
+
+```ts title="e2e/navigation.spec.ts"
+import { test, expect } from '@playwright/test';
+
+test('从首页点击进入 About 页', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('link', { name: 'About' }).click();
+  await expect(page).toHaveURL('/about');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('About');
+});
+```
+
+::: tip
+断言优先用语义化定位器（`getByRole`、`getByLabel`）而不是 CSS 选择器。重构 className 时测试不会碎，也顺带逼你补齐可访问性属性。
+:::
+
+## 为即时导航写保险：instant()
+
+第 6 章的即时导航有个测试难题：数据最终总会到达，普通断言无法区分“点击瞬间就有外壳”还是“白屏等了 800ms 才一起出来”。`@next/playwright`（`pnpm add -D @next/playwright @playwright/test`）提供的 `instant()` 辅助函数在回调期间**按住动态内容**，让断言只针对“点击那一刻立即可用的 UI”：
+
+```ts title="e2e/instant-navigation.spec.ts"
+import { test, expect } from '@playwright/test';
+import { instant } from '@next/playwright';
+
+test.describe('商品详情 /store/[slug]', () => {
+  test('直接打开时静态外壳即时可见', async ({ page, baseURL }) => {
+    await instant(
+      page,
+      async () => {
+        await page.goto('/store/hats');
+        // 外壳内的商品名立即可见
+        await expect(page.locator('h1')).toContainText('Baseball Cap');
+        // 动态库存此时被按住，不应出现
+        await expect(page.getByText('In stock')).toHaveCount(0);
+      },
+      { baseURL },
+    );
+    // 回调结束后动态内容流出
+    await expect(page.getByText('In stock')).toBeVisible();
+  });
+});
+```
+
+同一条路由要分别验证两种到达方式：`page.goto()` 对应直访的静态外壳；点击 `<Link>` 对应客户端导航的预取外壳。一个 Suspense 边界可能只覆盖其中一种——这正是 `instant()` 能抓到、人肉很难发现的回归。
+
+::: warn
+`instant()` 依赖 DevTools 的测试 Cookie 冻结动态内容。官方已知问题：Cookie 按域名而非端口隔离，本机同时跑多个项目（都在 localhost）会互相干扰，切换项目时清理该 Cookie 即可。
+:::
+
+## 服务端可观测钩子：instrumentation.ts
+
+测试证明“功能对”，可观测回答“线上好不好”。在项目根（用了 `src/` 就放 `src/` 内）建 `instrumentation.ts`，它导出两个可选钩子：
+
+```ts title="src/instrumentation.ts"
+import type { Instrumentation } from 'next';
+
+// 服务器实例启动时执行一次，且必须在开始接请求前完成
+export function register() {
+  // 进阶篇在这里接 OpenTelemetry
+  console.log('[instrumentation] server starting');
+}
+
+// 捕获服务端错误：渲染、Route Handler、Action、proxy 均会进入
+export const onRequestError: Instrumentation['onRequestError'] = async (
+  err,
+  request,
+  context,
+) => {
+  const message = err instanceof Error ? err.message : String(err);
+  const digest =
+    typeof err === 'object' && err !== null && 'digest' in err
+      ? String((err as { digest?: unknown }).digest)
+      : undefined;
+
+  await fetch('https://report.example.com/error', {
+    method: 'POST',
+    body: JSON.stringify({ message, digest, path: request.path, context }),
+  });
+};
+```
+
+`context.routeType` 会告诉你错误来自 `'render'`、`'route'`、`'action'` 还是 `'proxy'`，分流告警时非常有用。异步任务必须 `await`，否则进程可能在上报完成前结束。
+
+::: info
+React 渲染中抛出的错误可能被加工过，原始类型未必保留。用 `digest` 字段识别错误种类，不要假设 `err instanceof MyError` 一定成立。
+:::
+
+## 演练场：红绿重构的节奏
+
+下面这个迷你用例运行器演示测试驱动的基本循环——先写一个失败的断言（红），补实现转绿，再重构：
+
+```tsx title="红绿循环演示（纯前端逻辑模拟）" playground
+'use client';
+
+import { useState } from 'react';
+
+// 被测：会话 Cookie 属性是否齐备
+function checkCookie(options: Record<string, unknown>) {
+  const required = ['httpOnly', 'secure', 'sameSite', 'path'];
+  return required.every((k) => k in options);
+}
+
+export default function App() {
+  const [secure, setSecure] = useState(false);
+  const options = {
+    httpOnly: true,
+    ...(secure ? { secure: true } : {}),
+    sameSite: 'lax',
+    path: '/',
+  };
+  const passed = checkCookie(options);
+
+  return (
+    <div>
+      <h2>断言：Cookie 必须含 secure</h2>
+      <label className="row">
+        <input type="checkbox" checked={secure} onChange={(e) => setSecure(e.target.checked)} />
+        模拟“补上 secure 实现”
+      </label>
+      <pre className="card">{JSON.stringify(options, null, 2)}</pre>
+      <span className="badge" style=&#123;&#123; color: passed ? '#047857' : '#b91c1c' &#125;&#125;>
+        {passed ? 'PASS ✓' : 'FAIL ✗ 缺少 secure'}
+      </span>
+      <p className="muted">红 → 绿 → 重构：让测试先描述需求，再让实现满足它。</p>
+    </div>
+  );
+}
+```
+
+## 常见误区
+
+- **用 Vitest 硬渲染 async 服务端组件**：当前不支持，抽纯逻辑单测 + E2E 覆盖组件
+- **E2E 只对 dev server 跑**：dev 无压缩、无生产缓存，测出来的时序没有意义
+- **用 CSS class 当主定位器**：样式重构即全红；语义定位器更稳
+- **`onRequestError` 里发上报却不 await**：日志间歇性丢失
+- **给所有页面堆 E2E**：慢且脆；E2E 只守关键路径，数量交给单元层
+
+## 小结
+
+- 金字塔：Vitest 测纯逻辑与同步组件，Playwright 守关键用户路径，async 服务端组件归 E2E
+- `instant()` 专门冻结动态内容，把“即时外壳”变成 CI 里可回归的断言
+- `instrumentation.ts` 的 `register`/`onRequestError` 是服务端启动与错误上报的统一入口
+
+下一篇进阶：接 OpenTelemetry 链路追踪、读懂 Instant Insights、自托管 standalone 与 Build Adapters，以及环境变量在构建期/运行期的分层规则。
+
+# 14. 综合实战：全栈 SaaS 应用
+
+## 项目设定：TeamHub
+
+最后一章我们综合前 13 章，设计一个多租户团队协作 SaaS：每家公司是一个**租户（tenant）**，成员在租户内管理项目与文档；营销站、应用区、API 共用一个 Next.js 16.3 应用。蓝图阶段做错的决策，上线后修复成本十倍于此，所以本篇只做一件事：**把选型讨论清楚再写代码**。
+
+## 决策一：多租户数据隔离
+
+租户识别有三种入口：独立域名、子域名（`acme.app.com`）、路径段（`/t/acme`）。对中小团队 SaaS，**路径段 `/[tenant]` 起步**最省心——证书与 DNS 复杂度最低，后续需要品牌独立域名时再在 proxy 层映射。
+
+真正的安全核心不是“识别出租户”，而是**每一层都强制租户隔离**：
+
+```text title="隔离三道防线"
+① 会话载荷带 tenantId（登录时确定，不接受前端传参）
+② DAL 的每个查询都带 where: { tenantId }，且不导出绕过它的函数
+③ 数据库层加唯一约束/行级安全策略（RLS），作为应用层漏网时的兜底
+```
+
+```ts title="src/lib/tenant-dal.ts —— 租户上下文是缓存键与查询的强制前缀"
+import 'server-only';
+import { cache } from 'react';
+import { getCurrentUser } from './auth';
+
+export const getTenantContext = cache(async () => {
+  const user = await getCurrentUser(); // 第 11 章：private 缓存的会话出口
+  if (!user.tenantId) throw new Error('用户不属于任何租户');
+  return { tenantId: user.tenantId, userId: user.id, role: user.role };
+});
+
+// 所有租户数据查询都从这里走，调用方没有机会传入“别人的 tenantId”
+export async function listProjects() {
+  const { tenantId } = await getTenantContext();
+  return queryProjectsByTenant(tenantId);
+}
+```
+
+::: danger
+绝不能用客户端传来的 `tenant` 搜索参数或表单字段做归属判断，那等同于让用户自选能看哪家公司的数据。租户身份只能来自服务端会话；`searchParams.tenant` 之类只允许用于非敏感的界面偏好。
+:::
+
+## 决策二：路由规划
+
+路由组把“营销站”和“应用区”彻底分开，它们共享同一依赖但拥有不同布局与缓存策略：
+
+```text title="src/app 目录规划"
+app/
+├── (marketing)/              # 路由组：公共、强缓存、SEO 优先
+│   ├── page.tsx              # 落地页
+│   ├── pricing/page.tsx
+│   └── blog/[slug]/page.tsx
+├── (app)/
+│   └── t/[tenant]/           # 应用区：动态租户段
+│       ├── layout.tsx        # 租户壳：侧边栏 + 身份 UI（Suspense 内读会话）
+│       ├── projects/[...]
+│       └── settings/[...]
+├── api/
+│   ├── webhooks/stripe/route.ts   # 第三方回调
+│   └── export/[id]/route.ts       # 文件/流式下载
+├── proxy.ts                  # 语言协商、租户路由粗筛（不查库）
+└── instrumentation.ts        # OTel + 错误上报
+```
+
+## 决策三：缓存策略分层
+
+每个数据类型在 Stream / Cache / Block 三选一中只有一个正确答案。按数据特征分层，而不是按页面分层：
+
+| 数据 | 策略 | 标签/键 | 理由 |
+| --- | --- | --- | --- |
+| 营销页、博客、定价表 | `'use cache'` + `cacheLife('days')` | 内容 id | 公共、可进静态外壳、CDN 友好 |
+| 租户内共享数据（项目名、成员列表） | `'use cache'`，参数含 tenantId | `tenant:${id}:projects` | 租户内可共享，写后按标签失效 |
+| 用户私有数据（我的待办、通知） | `'use cache: private'` 或流式 | 不跨用户 | 合规上不落服务端共享缓存 |
+| 实时性数据（在线状态、用量） | 仅 Stream：Suspense 边界内动态取 | 无 | 新鲜度优先，外壳先出 |
+| 强个性化且暂未改造的页 | `export const instant = false` | 无 | 迁移期显式 Block，逐页再优化 |
+
+::: tip
+缓存标签的命名空间要在蓝图阶段定死。建议 `域:租户:资源` 三段式，如 `tenant:t_88:projects`。标签明文存储，租户 id 是稳定标识可以入标签；租户名称、用户邮箱不可以。
+:::
+
+## 决策四：BFF 与 Route Handler 的边界
+
+Next 可以做 BFF，但官方明确它不是完整后端替代品。边界要在第一天划清：
+
+| 需求 | 放在哪里 |
+| --- | --- |
+| 服务端组件取内部服务数据 | 组件/DAL 直接 `fetch`，**不要**绕自家 `/api`（多一跳） |
+| 第三方 Webhook（支付、CMS） | Route Handler：验原始 body、验签、幂等 |
+| 文件下载/流式响应 | Route Handler |
+| 客户端必须轮询/订阅的接口 | Route Handler（每个入口都要重复鉴权） |
+| 粗粒度重定向、语言协商、灰度 | proxy.ts（不查库） |
+| 核心业务规则、跨服务事务 | 独立后端服务，Next 只做编排 |
+
+## 决策五：i18n 方案
+
+官方推荐的结构是 **proxy 协商语言 + `app/[lang]` 动态段**：proxy 读 `Accept-Language`，无语言前缀时重定向到 `/zh-CN/...`；所有布局页面嵌套在 `[lang]` 下，通过 `await params` 取 `lang`。
+
+```ts title="src/proxy.ts —— 语言协商（节选）"
+import { NextResponse, type NextRequest } from 'next/server';
+
+const LOCALES = ['zh-CN', 'en-US'];
+const DEFAULT = 'zh-CN';
+
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const hasLocale = LOCALES.some((l) => pathname === `/${l}` || pathname.startsWith(`/${l}/`));
+  if (hasLocale) return NextResponse.next();
+
+  // 简化演示：生产可用 @formatjs/intl-localematcher 做质量值匹配
+  const accepted = request.headers.get('accept-language') ?? '';
+  const lang = accepted.includes('en') ? 'en-US' : DEFAULT;
+  return NextResponse.redirect(new URL(`/${lang}${pathname}`, request.url));
+}
+```
+
+::: warn
+**next-intl 等是第三方库，不是 Next.js API**。消息编译方式、与 Cache Components/部分预取的兼容性、版本要求都必须以该库当时的官方文档为准（包括其预编译/编译期消息提取能力是否覆盖你的渲染策略）。选型时先做一个最小路由的端到端验证再全量接入。
+:::
+
+与租户段组合时，顺序建议为 `app/[lang]/t/[tenant]/...`——语言是最外层，营销站也能复用同一套本地化结构。
+
+## 决策六：PWA 与离线，要不要做
+
+- **可安装性**成本低：`app/manifest.ts` 用 `MetadataRoute.Manifest` 内建生成，图标与主题色配齐即可
+- **离线可用**成本高：Service Worker 不在 Next 一等公民范围内，通常借助第三方 Workbox 类方案自行注册与维护缓存版本，缓存策略写错会让用户长期卡在旧版本
+- 16.3 另有**实验性** `experimental.useOffline`：断网期间导航、RSC 取数与 Server Action 不抛错而是挂起重试，配 `useOffline` hook 提示用户；其前提是 Cache Components + Partial Prefetching，且明确标注实验，不建议作为产品核心承诺
+
+对 TeamHub 的结论：**营销站与应用外壳做可安装；离线只做“断网提示 + 请求挂起重试”，不承诺离线编辑**——协作产品的离线写入冲突代价远大于收益。
+
+## 架构决策沙盘
+
+把数据特征喂给下面的决策器，它会给出与本篇分层表一致的推荐——真实项目里这张表应该贴在团队 wiki 上：
+
+```tsx title="缓存/渲染策略选择器" playground
+'use client';
+
+import { useState } from 'react';
+
+type Answers = { shared: string; fresh: string; offline: string };
+
+function decide(a: Answers): string {
+  if (a.fresh === '实时') return 'Stream：Suspense 边界内动态取数，不缓存';
+  if (a.offline === '合规不落服务端') return "use cache: private：仅浏览器内存，按用户隔离";
+  if (a.shared === '全租户共享') return "use cache + cacheLife('days')，进静态外壳";
+  if (a.shared === '租户内共享') return "use cache，键含 tenantId + cacheTag 租户命名空间";
+  return 'instant = false：先阻塞，列入即时导航迁移 backlog';
+}
+
+export default function App() {
+  const [a, setA] = useState<Answers>({ shared: '租户内共享', fresh: '分钟级', offline: '可缓存' });
+
+  const Field = ({ k, label, options }: { k: keyof Answers; label: string; options: string[] }) => (
+    <label className="row" style=&#123;&#123; justifyContent: 'space-between' &#125;&#125;>
+      <span>{label}</span>
+      <select value={a[k]} onChange={(e) => setA({ ...a, [k]: e.target.value })}>
+        {options.map((o) => <option key={o}>{o}</option>)}
+      </select>
+    </label>
+  );
+
+  return (
+    <div>
+      <h2>数据分层决策器</h2>
+      <div className="card">
+        <Field k="shared" label="共享范围" options={['全租户共享', '租户内共享', '用户私有']} />
+        <Field k="fresh" label="新鲜度" options={['分钟级', '实时']} />
+        <Field k="offline" label="服务端缓存" options={['可缓存', '合规不落服务端']} />
+      </div>
+      <div className="badge" style=&#123;&#123; marginTop: 12, color: '#1d4ed8' &#125;&#125;>{decide(a)}</div>
+      <p className="muted">策略跟随数据特征，不跟随页面归属——同一页面可以混着用。</p>
+    </div>
+  );
+}
+```
+
+## 小结
+
+- 多租户安全靠三道防线：会话定租户、DAL 强过滤、数据库兜底；租户身份永不信客户端
+- 路由组拆营销与应用；缓存按数据特征在 Cache/Stream/Block 间分层，标签命名空间先行
+- BFF 边界：组件直连内部服务，Handler 留给 webhook/流/客户端接口
+- i18n 用 proxy + `[lang]`，第三方库按其官方文档验证；离线只承诺提示与挂起重试
+
+下一篇进入关键模块实现：租户鉴权布局、列表详情即时导航、变更失效、SEO 与可观测，以及如何让 AI 智能体成为团队成员。
+
+# 源码深潜
+
+## 源码深潜：Server Action 的一次调用链
+
+## 从一次 POST 说起
+
+第 7 章把 Server Action 讲成「像调本地函数一样调服务端」。但到了网络层，它仍然是一次普通的 POST：带着表单或序列化参数，打回当前页面 URL。真正把「POST 请求」变成「函数调用」的，是 `action-handler.js` 里的 `handleAction`——这一篇顺着它走一遍完整调用链。
+
+## ① 入口：先认出「这是不是一次 action」
+
+`handleAction` 拿到任何 POST 都会先跑一遍，它的第一件事是分流：
+
+```js title="next/dist/server/app-render/action-handler.js（入口分流）" source="next/dist/server/app-render/action-handler.js#L373-L399"
+```
+
+三个信息量很大的点：
+
+- **识别靠请求元数据**：`getServerActionRequestMetadata` 从 `next-action` 头与 `content-type` 里解出 `actionId`、`isFetchAction`、`isMultipartAction`——客户端 `fetch` 触发的 action 与 MPA 表单 action 在这里就分开了
+- **早退是常态**：`isPossibleServerAction` 为假时直接返回 `null`，把请求交还给普通渲染管线。注释坦承这可能是误报——任何 multipart/urlencoded 的 POST 都会走到这里，是不是 MPA action 要等 `decodeAction` 才知道
+- **静态生成期禁入**：构建期预渲染时调 action 是不变量违规，直接抛 `E359`
+
+## ② 第一道闸门：origin 与 host 必须对得上
+
+通过分流后，校验的第一站不是参数，而是**请求来源**：
+
+```js title="next/dist/server/app-render/action-handler.js（CSRF 检查）" source="next/dist/server/app-render/action-handler.js#L440-L459"
+```
+
+这是一道刻意的 CSRF 防线：action 是可写的（改数据库、改 cookie），而浏览器表单可以跨域 POST。`origin` 头的 host 部分必须与 `host`/`x-forwarded-host` 一致，否则直接中止——注释写得毫不含糊：「This is an attack」。唯一的例外是 `allowedOrigins` 白名单，给反向代理后 Host 被改写的部署留了出口。
+
+过了这道闸，响应立刻被钉上 `Cache-Control: no-cache, no-store, max-age=0, must-revalidate`——action 响应**永远不进 HTTP 缓存**，这是「可写操作」的必然推论。
+
+## ③ actionId 怎么找到对应模块
+
+客户端发来的只是一个 ID 字符串，找到真实模块要过一层清单：
+
+```js title="next/dist/server/app-render/action-handler.js（ID 解析）" source="next/dist/server/app-render/action-handler.js#L1014-L1039"
+```
+
+`serverModuleMap` 来自构建期的 server actions manifest。查不到时分两种报错，区分得很讲究：
+
+- ID 长得像合法的服务端引用 → `ActionNotFoundError`，典型原因是 **deployment skew**：用户页面来自旧部署，action 在新部署里已经不存在
+- ID 连格式都不对（或撞上 `toString` 这类被代理排除的属性名）→ `InvalidServerReferenceIdError`，几乎必然是构造的探测请求
+
+另外还有一个多进程细节：如果当前 worker 根本没有这个 action 的模块，请求会被**转发**给有的 worker（`x-action-forwarded` 头防止转发环路）。这就是大型部署里「页面 worker 与 action worker 分离」的实现支点。
+
+## ④ 同一份 body，两种解码路径
+
+参数从请求体还原成 JS 值，走 React Flight 协议的解码器，但 fetch action 与 MPA action 不是同一条路：
+
+```js title="next/dist/server/app-render/action-handler.js（两种解码）" source="next/dist/server/app-render/action-handler.js#L573-L601"
+```
+
+- **fetch action**：`next-action` 头给出 ID，body 用 `decodeReply` 还原成参数数组——客户端调 action 时参数是被 `encodeReply` 序列化成多行 Flight 数据的
+- **MPA action**：没有 ID 头，action 的标识藏在表单字段里（`$ACTION_ID_...` 或 `$ACTION_REF_...` 加描述符），交给 `decodeAction` 整个解出**一个函数**。解不出来就说明这只是一次普通 POST，返回 `null` 交还管线
+- **`decodeFormState`** 是 MPA 专属：配合 `useActionState`，把 action 的返回值转成下一次渲染的表单状态
+
+正式 `decodeAction` 之前，Next 还会先用 `areAllActionIdsValid` 预扫一遍 FormData——这段逻辑刻意镜像 React 内部的解码规则，确保每个 `$ACTION_` 字段指向的 ID 都在本应用清单里，伪造的引用在解码前就被挡掉。
+
+## ⑤ 执行：先切 phase，再决定要不要重渲染
+
+真正调函数只有一行 `action.apply(null, args)`，但包裹它的前后处理才是精髓：
+
+```js title="next/dist/server/app-render/action-handler.js（执行与阶段切换）" source="next/dist/server/app-render/action-handler.js#L976-L1013"
+```
+
+读这个函数要抓住三件事：
+
+- **phase 切换**：执行前 `requestStore.phase = 'action'`——这让 action 体内的 `cookies().set()` 合法（渲染期调用会抛错）；finally 里切回 `'render'`
+- **cookie 同步**：切回渲染前调 `synchronizeMutableCookies`，把 action 期间写进可变 cookie 的变更**回灌到渲染要读的不可变快照**——否则同一次请求里重渲染的页面看不到刚写的 cookie
+- **`skipPageRendering` 的判定**：只要 action 没调 `revalidatePath/revalidateTag`（或请求是转发来的），页面数据不可能变，就跳过重渲染；若调了，finally 里先 `executeRevalidates` 把失效落实，再渲染
+
+## ⑥ 响应不是「结果」，是一次重渲染
+
+fetch action 的响应最能体现 Server Action 的设计哲学：
+
+```js title="next/dist/server/app-render/action-handler.js（响应生成）" source="next/dist/server/app-render/action-handler.js#L867-L881"
+```
+
+返回值不是裸的 action 结果，而是**一次新的 `generateFlight`**：响应体里同时装着 actionResult 和（除非跳过）重渲染后的页面 Flight 数据。客户端收到后一次完成「拿到返回值 + 更新 UI」——这正是第 7 章说的「变更与界面同往返一致」的来源。若 `skipPageRendering` 为真，还要把挂起的 revalidates 通过 `waitUntil` 交给运行时，保证响应关闭前失效真正落盘。
+
+::: info
+调用链全景：识别（元数据）→ 防线（origin/host）→ 定位（manifest + worker 转发）→ 解码（Flight）→ 执行（phase 切换 + cookie 回灌 + 失效落实）→ 响应（重渲染的 Flight）。每一环都对应第 7 章正文里的一条规则。
+:::
+
+```tsx quiz="action 体内执行了 cookies().set('theme', 'dark')，随后 Next 在同一次请求里重渲染页面。如果省掉 synchronizeMutableCookies 这一步，页面会读到什么？为什么这个动作本身在渲染期是非法的？"
+页面会读到旧值——渲染期 cookies() 读的是不可变快照，
+action 期间写进可变 cookie 的变更不会自动出现，
+必须靠 synchronizeMutableCookies 在切回 render phase 前回灌。
+
+而 set 在渲染期非法，是因为渲染必须是纯函数：
+同一个页面在流式渲染、预渲染、重试中可能执行多次，
+允许写 cookie 会让响应头取决于"渲染跑到哪一步"，结果不可重现。
+action phase 是唯一允许副作用的时间窗。
+```
+
+## 与章节的对应
+
+本篇的调用链对应第 7 章的三节：调用方式与序列化对应 [7.1 基础认知：Server Action 与数据变更](/chapters/07-server-actions/basics)，origin 校验与 cookie 写入规则对应 [7.2 进阶理解：安全边界与变更语义](/chapters/07-server-actions/advanced)，Flight 编解码与重渲染机制对应 [7.4 原理篇：手写 Flight 协议与 action 调用](/chapters/07-server-actions/internals)。
+
+## 小结
+
+- 入口靠请求元数据分流，非 action 的 POST 早退交还渲染管线
+- origin 与 host 不一致即视为 CSRF 攻击；action 响应永远 `no-store`
+- actionId 经 server actions manifest 解析，查不到时区分 deployment skew 与伪造 ID
+- fetch action 用 `decodeReply` 还原参数，MPA action 用 `decodeAction` 解出函数，外加 `decodeFormState` 承接表单状态
+- 执行夹在 phase 切换里：`action` 期允许写 cookie，切回 `render` 前回灌快照、落实 revalidates
+- 响应是一次重渲染的 Flight：返回值与新 UI 同往返抵达，这就是「变更与界面一致」的实现
+
+## 源码深潜：Cache Components 的编译期分析与运行时边界
+
+## 从一次构建报错说起
+
+在 `next.config` 里打开 `cacheComponents` 之后，某个页面写了 `export const instant = ...`，构建直接失败，报 `E1162`：这条路由不能在没有开启 `cacheComponents` 的情况下使用 `instant`。看起来只是一句配置校验，但它其实是四层机制里最表层的出口。
+
+再往里走，还有几个更值得追问的现象：
+
+- 为什么同一个 `cacheComponents` 开关，会同时影响 `instant`、`prefetch` 和 `'use cache'` 三套语义？
+- 为什么编译后的客户端代码里，相关分支像是不存在一样？
+- 为什么一个「已经预渲染好的页面」，在运行时仍要再跑一次 `prerender`？
+
+这一篇按「配置折叠 → SWC 转换 → 路由校验 → 运行时边界」的顺序，把这条管线拆开。需要先说明引用层次：`next/dist` 里能看到的是 Next.js 的编排代码；真正的指令重写发生在 SWC 内部，本篇引用的是**传给 SWC 的语义参数**与**运行时消费这些参数的代码**。
+
+## ① 配置先被折叠成编译期常量
+
+`cacheComponents` 不是每个请求都要读的配置。构建一开始，它就被折算进 `defineEnv`：
+
+```js title="next/dist/build/define-env.js（缓存开关的编译期常量）" source="next/dist/build/define-env.js#L85-L92"
+```
+
+这里有三点值得记住：
+
+- **两个开关不是一回事**：`__NEXT_CACHE_COMPONENTS` 对应 `config.cacheComponents`，而 `__NEXT_USE_CACHE` 对应更早的 `experimental.useCache`。前者是路由级缓存模型，后者只是 `'use cache'` 指令的能力开关
+- **`__NEXT_INSTANT_NAV_TOGGLE` 是镜像值**：它和 `cacheComponents` 绑定，说明 Instant Navigation 的开关并不独立于缓存模型
+- **常量的意义是死代码消除**：这些值以字面量形式注入，打包器可以把 `if (process.env.__NEXT_CACHE_COMPONENTS)` 的分支直接裁掉。于是「运行时读配置」这件事，在产物里根本不存在
+
+::: warn
+这些 `__NEXT_*` 变量是内部实现细节，不是公开 API。它们会随版本改名字，也不保证在 Edge 运行时可用。Cache Components 的 `CacheSignal` 甚至在构造时就直接拒绝 Edge 运行时。
+:::
+
+## ② SWC 拿到的不是「开关」，而是语义
+
+到了编译单个模块时，开关变成了更细的语义参数：
+
+```js title="next/dist/build/swc/options.js（交给 SWC 的语义参数）" source="next/dist/build/swc/options.js#L161-L178"
+```
+
+这一段信息量很大：
+
+- **服务端组件与服务端动作分开配置**：`serverComponents` 关心指令与组件边界，`serverActions` 关心引用 ID 与缓存种类
+- **`cacheComponentsEnabled` 与 `useCacheEnabled` 同时存在**：说明「Cache Components 的整页缓存模型」和「`'use cache'` 指令」在编译期是两个独立维度
+- **`hashSalt` 与 `cacheKinds` 只出现在动作侧**：`'use cache'` 函数会被编译成一种特殊的服务端引用；`cacheKinds` 里的 `default`、`remote`、`private`，以及自定义 cache handler 的名字，都要参与这次转换。运行时的 `cache()` 包装如何消费这些信息，见[源码深潜：use cache 的运行时包装与缓存条目](/deep-dives/use-cache-wrapper)
+- **`taintEnabled` 是另一条安全线**：它让 `experimental_taintObjectReference` 之类的标记在编译期生效，与缓存边界无关，但同样属于「模块级语义」
+
+换句话说，`'use cache'` 不是运行时才被解析的字符串。SWC 必须先把指令变成带 kind 的引用，后面的运行时才有的可查。
+
+## ③ 路由尺度上再校验一次
+
+模块编译完，构建还要把所有导出的 route segment config 收拢到「这一页」的尺度上检查：
+
+```js title="next/dist/build/analysis/get-page-static-info.js（段配置与指令的冲突）" source="next/dist/build/analysis/get-page-static-info.js#L493-L522"
+```
+
+这段代码回答了两个常见困惑：
+
+- **为什么 `instant` / `prefetch` 不能和 `'use client'` 共存**：它们是「服务端段」的配置，客户端模块没有对应的渲染段语义，所以直接抛 `E1344` / `E1323`
+- **为什么没开 `cacheComponents` 就报错**：`instant` 和 `prefetch` 都依赖 Cache Components 的预渲染/预取模型；没有这个模型，配置本身没有可执行的语义，于是抛 `E1162` / `E1322`
+
+注意这里的错误是**路由级**的，而不是模块级的。同名导出在别的文件里可能完全合法；只有把它放到某个 page/layout 的入口上，才构成冲突。这也解释了为什么同一份组件代码换个路由就可能构建失败。
+
+## ④ 运行时边界：不是「静态/动态组件」，而是「未完成的缓存读取」
+
+真正有趣的部分在渲染期。当路由启用了 Partial Prefetching，`app-render` 会先做一次动态渲染，同时为「运行时预渲染」准备一条旁路：
+
+```js title="next/dist/server/app-render/app-render.js（缓存填充与运行时预渲染）" source="next/dist/server/app-render/app-render.js#L543-L565"
+```
+
+四个动作构成了运行时的边界：
+
+- **`PrerenderResumeDataCache` 是一块可变缓存**：动态渲染期间读到的结果被写进去，供后续的运行时预渲染复用
+- **`CacheSignal` 负责判断「缓存是否已经填完」**：它跟踪缓存读取和模块加载，而不是跟踪所有 Promise
+- **`runtimePrefetchStream` 是一条延迟流**：可读端直接进入 RSC 载荷，Flight 会惰性序列化它；可写端要等缓存就绪后才有内容
+- **最后的 `spawnRuntimePrefetchWithFilledCaches` 是 fire-and-forget**：它不阻塞当前响应，只是把「填好缓存的运行时预渲染」补进同一条载荷
+
+所以「静态外壳 + 动态孔洞」在代码层的分界，不是某个组件被标记成静态或动态，而是**这次渲染里还有没有未完成的缓存读取**。外壳可以先发，是因为边界之外的内容不依赖那些读取。
+
+## ⑤ CacheSignal 的计数为什么值得单独说
+
+`CacheSignal` 的实现只有一百多行，但语义很讲究：
+
+- `beginRead` / `endRead` 维护一个计数；计数归零并不立刻 resolve，而是先排一个 microtask，再排 `setImmediate` 与 `setTimeout`
+- 原因写在注释里：一次缓存 resolve 之后，React 可能在 microtask 或 `setImmediate` 里继续调度渲染，而新渲染很可能再次读缓存。如果立刻宣布「没有待处理读取」，就会把还没发起的读取漏掉
+- `inputReady()` 与 `cacheReady()` 是两种等待：前者允许后续继续追加读取，后者等到当前这批读取真正安定
+
+这也是为什么 Cache Components 不能简单地在 Edge 运行时工作：它依赖 `process.nextTick` 和 Node 的事件循环顺序，构造时就会对 Edge 抛 `E728`。
+
+## ⑥ 收益、代价与边界
+
+- **收益**：外壳的产出不再依赖「整页数据是否到齐」；运行时预渲染可以复用动态渲染刚填好的缓存，Instant Navigation 的「先骨架、后内容」因此有了服务端支点
+- **代价**：编译期规则更严，`instant`、`prefetch`、`'use client'` 的组合会被提前拒绝；开启 Partial Prefetching 还会增加一次服务端预渲染和响应体积
+- **边界**：`cacheComponents` 不等于「所有东西都被缓存」。没有显式缓存声明的 IO 仍会在预渲染期变成动态孔洞（见[源码深潜：四层缓存在一次 fetch 里的交汇](/deep-dives/cache-layers)）；`'use cache'` 依然是显式 opt-in。跨请求续传 postponed state 的机制，则由[源码深潜：PPR 的 postponed state 如何跨请求续传](/deep-dives/ppr-postponed-state)负责
+
+```tsx quiz="CacheSignal.cacheReady() 在计数归零后，为什么还要再等一个 setImmediate 和一个 setTimeout，而不是立刻 resolve？如果提前 resolve，最典型的错误现象是什么？"
+因为缓存 resolve 之后，React 还可能在同一轮工作的 microtask
+或 setImmediate 里继续渲染，而新渲染很可能再次发起缓存读取。
+提前 resolve 会把「还没开始的读取」当成「已经结束」。
+
+典型现象是运行时预渲染提前开跑：它读到一份尚未填完的缓存，
+于是把本应动态的内容固化成空值或旧值，外壳看起来正常，
+补进来的动态数据却缺了一段。
+```
+
+## 与章节的对应
+
+本篇对应第 6 章的三节：[6.1 基础认知：为什么导航是瞬时的](/chapters/06-instant-navigation/basics)讲清外壳与动态内容的分工，[6.2 进阶理解：外壳合并、URL 级预取与 Instant Insights](/chapters/06-instant-navigation/advanced)讲 Partial Prefetching 的开关，[6.4 原理篇：手写 Partial Prefetch](/chapters/06-instant-navigation/internals)把这条链路落到可运行的实现。缓存判定本身则对应[5.4 原理篇：静态外壳与动态孤岛的判定](/chapters/05-caching/internals)。
+
+## 小结
+
+- `cacheComponents` 在构建入口被折叠成 `__NEXT_CACHE_COMPONENTS` 等常量，运行时分支会被死代码消除
+- SWC 侧收到的是 `cacheComponentsEnabled`、`useCacheEnabled`、`hashSalt`、`cacheKinds` 这样的语义参数，`'use cache'` 在编译期就变成带 kind 的引用
+- 路由段配置在 page/layout 尺度再校验一次：`instant`、`prefetch` 不能与 `'use client'` 共存，也不能脱离 `cacheComponents`
+- 运行时边界由「未完成的缓存读取」定义，`PrerenderResumeDataCache` 与 `CacheSignal` 共同决定何时启动最终运行时预渲染
+- `CacheSignal` 归零后仍要绕一圈事件循环，是为了接住缓存 resolve 后新调度出来的读取
+- Cache Components 是缓存模型的开关，不是「自动缓存一切」；显式声明与动态孔洞的规则仍然生效
+
+## 源码深潜：四层缓存在一次 fetch 里的交汇
+
+## 四层各管什么
+
+第 5 章把缓存讲成四层：**请求记忆化**（单次渲染内去重）、**数据缓存**（跨请求的 fetch 结果）、**完整路由缓存**（预渲染的页面产物）、**路由器缓存**（客户端的导航片段）。它们分属不同模块，但会在一次 `fetch()` 里交汇——`patch-fetch.js` 替换了全局 fetch，每一次调用都要回答四个问题：去重吗？进数据缓存吗？让页面失去静态资格吗？客户端还认吗？
+
+这一篇顺着这个补丁函数往下走，看它如何做前三道题，最后一题留给客户端的 reducer。
+
+## ① 没有配置时，fetch 默认走向哪
+
+这是最容易答错的一道题。源码里的判定链比文档长得多：
+
+```js title="next/dist/server/lib/patch-fetch.js（自动降级判定）" source="next/dist/server/lib/patch-fetch.js#L412-L443"
+```
+
+三个要点：
+
+- **凭证与方法是硬条件**：带 `authorization`/`cookie` 头、或非 GET/HEAD 方法的 fetch，在 `revalidate === 0` 的上下文里直接 `autoNoCache`——这类请求缓了就是事故
+- **完全没写配置也是信号**：路由没配 `fetchCache`、调用没写 `cache`/`revalidate`，在运行时同样自动不缓存。Next 15 之后「默认不缓存」不是一句口号，就是这段 `hasNoExplicitCacheConfig`
+- **构建期是唯一例外**：`isBuildTimePrerendering` 时不启用自动 no-cache，而是标记 `isImplicitBuildTimeCache`——导出 worker 之间还要靠数据缓存复用结果，构建产物才不会重复打上游
+
+## ② Cache Components 下，无配置 fetch 变成动态孔洞
+
+开了 Cache Components（`cacheComponents`）之后，规则更激进：
+
+```js title="next/dist/server/lib/patch-fetch.js（动态挂起）" source="next/dist/server/lib/patch-fetch.js#L444-L458"
+```
+
+预渲染期遇到一个**没有任何缓存配置**的 fetch，Next 根本不发请求——直接返回一个挂起的 Promise（`makeDynamicHangingPromise`）。语义很直白：没声明 `'use cache'` 也没写 `revalidate` 的数据属于运行时，预渲染阶段算不出来，就把它留成页面上的**动态孔洞**，等真实请求来了再填。这就是「静态外壳 + 动态孤岛」在 fetch 层的实现。
+
+## ③ 路由级 fetchCache：四种模式与冲突抛错
+
+路由导出 `export const fetchCache = ...` 会接管本路由所有 fetch 的默认行为，四种模式的处理挤在一个 switch 里：
+
+```js title="next/dist/server/lib/patch-fetch.js（路由级模式）" source="next/dist/server/lib/patch-fetch.js#L481-L517"
+```
+
+值得注意的是两处**直接抛错**：`only-no-store` 下任何 `force-cache` 或正数 `revalidate`、`only-cache` 下任何 `no-store`——路由级约定与局部配置冲突时不猜、不静默覆盖，而是让构建/渲染直接失败。而 `force-cache` 模式会把缺省的 `revalidate` 抬成 `INFINITE_CACHE`：声明了「强制缓存」就是无限期，没有折中档。
+
+## ④ 数据缓存的读取：锁、条目与隐式标签
+
+通过了所有判定、确认这次 fetch 可缓存，才走到真正的读写：
+
+```js title="next/dist/server/lib/patch-fetch.js（缓存读取）" source="next/dist/server/lib/patch-fetch.js#L746-L761"
+```
+
+- **先加锁再读**：`incrementalCache.lock(cacheKey)` 防止并发请求同时回源——同一 cacheKey 只允许一个请求穿透到上游，其余等锁
+- **条目带上下文**：`get` 时传入 `revalidate`、`tags` 与 `softTags`（隐式标签，来自当前路由路径）——`revalidatePath('/blog')` 能命中相关 fetch，靠的就是这些自动挂上的路由标签
+- **按需失效可绕过**：`isOnDemandRevalidate` 时直接传 `null` 条目，强制这次走最新数据
+
+## ⑤ 过期不等于丢弃：后台重取
+
+拿到条目且 `isStale` 时，策略是经典的 stale-while-revalidate：
+
+```js title="next/dist/server/lib/patch-fetch.js（后台重取）" source="next/dist/server/lib/patch-fetch.js#L798-L823"
+```
+
+- **运行时任期**：旧数据**立刻返回**给当前请求，同时把一次新 fetch 挂进 `workStore.pendingRevalidates` 后台执行，写回缓存后用户下次访问拿到新值——快与新不可兼得时，先保快
+- **静态生成期例外**：`isStaticGeneration` 时反而置 `isForegroundRevalidate = true`，构建必须等新数据——产物要正确，慢一点没关系
+- **防重入**：`pendingRevalidates[cacheKey]` 存在就不再发起第二次；空 catch 只是为了吞掉未处理拒绝告警，真实错误由前台路径报
+
+## ⑥ 客户端这一层：refresh 时谁失效、谁保留
+
+服务端的四层里，路由器缓存活在客户端。`router.refresh()` 时它的处置方式写在一个 reducer 的注释里：
+
+```js title="next/dist/client/components/router-reducer/reducers/refresh-reducer.js（刷新失效）" source="next/dist/client/components/router-reducer/reducers/refresh-reducer.js#L29-L46"
+```
+
+注释把边界划得很清楚：**route cache 保留**（「哪些 URL 有哪些 segment」这个结构不会因刷新改变），**segment cache 失效**（里面的 RSC 数据可能已过时），随后把 refresh 建模成「到当前 URL 的一次导航」重新取数。Server Action 调了 `revalidatePath` 之后的客户端更新，走的正是这条路——服务端重渲染的 Flight 到达后，替换的是数据，不是结构。
+
+::: info
+把四层串起来：同一渲染内的重复 fetch 由记忆化去重（React cache / dedupe-fetch）；跨请求的结果存数据缓存（本篇 ④⑤）；整个页面的预渲染产物是完整路由缓存；客户端导航片段是路由器缓存（本篇 ⑥）。一次 fetch 要不要穿透这四层，由 ①②③ 的判定链决定。
+:::
+
+```tsx quiz="某 fetch 在运行时命中了数据缓存但条目 isStale。当前请求拿到的是旧数据还是新数据？后台那次重取如果失败，用户会看到什么？为什么静态生成期要改成前台等待？"
+当前请求立刻拿到旧数据（stale-while-revalidate）。
+后台重取挂进 pendingRevalidates，失败只进日志——
+本次响应早已发出，用户无感知；下次请求仍拿到旧条目，
+直到某次后台重取成功为止。
+
+静态生成期改成前台等待，是因为构建产物会被无限期复用：
+宁可让构建慢，也不能把一份明知过期的数据烘进静态产物。
+```
+
+## 与章节的对应
+
+本篇的判定链对应第 5 章的三节：四层分工与默认行为对应 [5.1 基础认知：缓存全景与默认规则](/chapters/05-caching/basics)，路由级配置、标签与按需失效对应 [5.2 进阶理解：revalidate 与缓存标签](/chapters/05-caching/advanced)，动态信号如何否决静态资格对应 [5.4 原理篇：静态外壳与动态孤岛的判定](/chapters/05-caching/internals)。
+
+## 小结
+
+- 无配置 + 带凭证/非 GET 的 fetch 自动不缓存；构建期是唯一例外，还要靠数据缓存复用
+- Cache Components 下无配置 fetch 在预渲染期直接变动态孔洞，请求都不发
+- 路由级 `fetchCache` 与局部配置冲突时直接抛错；`force-cache` 把缺省 revalidate 抬成无限期
+- 数据缓存读取先加锁防并发穿透，隐式标签让 `revalidatePath` 能命中相关条目
+- 过期条目走 stale-while-revalidate：旧数据先回，后台重取；静态生成期则前台等新
+- 客户端 refresh 保留 route cache、失效 segment cache——数据可换，结构不动
+
+## 源码深潜：服务端渲染的 Flight 流生成链
+
+## Flight 不是 HTML
+
+组件篇讲过：Server Component 的输出不是 HTML，而是一份 **Flight 载荷**——一种可流式传输的、带占位与引用关系的数据序列化格式。本篇要回答一个更底层的问题：这份载荷是**在哪里、以什么形式**被写进响应流的？
+
+链路可以粗略记成：
+
+```text title="一趟 RSC 请求的生成链（摘要）"
+app-render.js
+  └─ renderToReadableStream(payload)      ← React 把组件树序列化成 Flight 流
+        ↓（Web Stream）
+stream-ops.node.js
+  └─ createNodeInlinedDataStream(source)
+        └─ pullFlightData(...)            ← 每个 chunk 包一层 <script>，注入 HTML
+              ↓
+        浏览器：self.__next_f.push(...)   ← 客户端 runtime 接收并复原组件树
+```
+
+## 起点：进入 ShellStatic 阶段
+
+在 app-render 里，真正调用 React 序列化器之前，先推进一个渲染阶段——`ShellStatic`（静态外壳）。这是 PPR 心智模型的落点：外壳先成型，动态部分之后再补。
+
+```ts title="渲染阶段的推进（摘要）"
+finalStageController.advanceStage(RenderStage.ShellStatic);
+const stream = workUnitAsyncStorage.run(
+  finalServerPrerenderStore,
+  ComponentMod.renderToReadableStream,
+  finalServerPayload,
+  clientModules,
+  { filterStackFrame, onError, signal: finalServerReactController.signal },
+);
+```
+
+```ts source="next/dist/server/app-render/app-render.js#L5390-L5397" title="真实源码：renderToReadableStream 调用"
+```
+
+::: info 两个 store 又出现了
+这里再一次把调用包进 `workUnitAsyncStorage.run(...)`：React 渲染过程中任何 `cookies()/headers()` 等动态访问，都靠这个 ALS 上下文才认得「当前处于预渲染/请求的哪一态」。这与上一篇 `use cache` 的入口校验是同一个机制。
+:::
+
+## 中段：把每个 chunk 包成 `<script>`
+
+React 交出来的是 Web Stream。Node 侧要把它嵌进 HTML，就要做一层转换——`createNodeInlinedDataStream` 先写一段引导脚本，再逐块拉取 Flight 数据并包上 `<script>` 标签：
+
+```ts title="内联数据流的两步（摘要）"
+const startScriptTag = nonce ? `<script nonce="${htmlEscapeAttributeString(nonce)}">` : '<script>';
+// 1) 先写入 bootstrap 指令：告诉浏览器后续会有分块
+pt.push(Buffer.from(`${startScriptTag}${scriptContents}</script>`));
+// 2) 再从 Flight 流逐块拉取，每块包一层 <script> 推进 HTML
+pullFlightData(dataStream, pt, startScriptTag);
+```
+
+```ts source="next/dist/server/app-render/stream-ops.node.js#L723-L741" title="真实源码：createNodeInlinedDataStream"
+```
+
+## 载荷类型：一个枚举讲清分工
+
+每个被内联的块都带一个类型标记，客户端据此决定「这是数据、是表单状态，还是二进制」：
+
+```ts source="next/dist/server/app-render/stream-ops.node.js#L742-L745" title="真实源码：内联载荷类型"
+```
+
+```text title="四种块的分工（摘要）"
+0 BOOTSTRAP     启动指令（序列化器版本、运行时元信息）
+1 DATA          Flight 载荷本体
+2 FORM_STATE    Server Action 的表单状态回填
+3 BINARY        二进制块（如大 payload 的分段）
+```
+
+::: warn nonce 的用途
+`<script nonce="...">` 里的 nonce 是为 CSP 服务的：只有带正确 nonce 的内联脚本才会被浏览器执行。这也是为什么在配置严格 CSP 时，内联 Flight 数据的注入方式必须由框架统一管理，而不该由应用层手写。
+:::
+
+```tsx quiz="如果把 Flight 载荷换成等价的纯 HTML 一次性输出，会失去什么？"
+失去「流式」本身——外壳无法先到达，动态部分也无法边算边推。
+
+Flight 是带占位（suspense 边界）与引用关系的可流式序列化格式：React 能先发出
+已完成的部分，遇到 Suspense 就发出占位、稍后把真实数据作为新 chunk 补进去。
+纯 HTML 一次性输出必须等到整棵树都渲染完，首字节与外壳都会被拖后。
+```
+
+## 静态壳与动态洞：postponed state
+
+对 PPR 页面，请求里还会带一份 `postponedState`——它记录了「静态外壳中哪些位置被留成了洞」。渲染时先产出可直接缓存的静态壳；动态洞则在运行时通过相同的内联数据流补入。理解了上面 `ShellStatic` 阶段的推进，就能把「静态壳 + 动态洞」串成一条线，而不是两个孤立的特性。
+
+## 小结
+
+- Flight 是组件树的**可流式序列化格式**，不是 HTML；HTML 只是它的载体（一层 `<script>` 包装）。
+- `app-render` 先推进 `ShellStatic` 阶段，再调用 `renderToReadableStream` 生成 Flight 流，调用被 `workUnitAsyncStorage.run` 包住以携带动态访问上下文。
+- `stream-ops` 的 `createNodeInlinedDataStream` 负责把 Web Stream 转成可嵌入 HTML 的内联数据流：先写 bootstrap，再逐块包 `<script>`。
+- 内联块有明确的类型枚举（bootstrap / data / form state / binary），nonce 则服务于严格 CSP。
+
+想先用眼睛看一遍「外壳先到、数据后到」的效果，可以运行 [流式渲染实验](/labs/data-streaming)；而缓存条目在被序列化之前的长相，见上一篇 [源码深潜：use cache 的运行时包装](/deep-dives/use-cache-wrapper)。
+
+## 源码深潜：PPR 的 postponed state 如何跨请求续传
+
+## 「先给外壳，再补动态」的落点在哪里
+
+8.2 讲了 Cache Components 时代的软动态：外壳可以先行产出，动态部分延后补齐。那么**延后这件事是怎么被记住的**？答案是一个被序列化的字符串——postponed state。它由服务端在产出静态外壳时生成，随响应发给客户端，又在下一次请求（续传、客户端导航）时被解析回来，告诉运行时「哪些内容当时没算出来、要从哪里接着算」。
+
+## ① 两种「动态」与两种「外壳」
+
+```js title="next/dist/server/app-render/postponed-state.js（节选）" source="next/dist/server/app-render/postponed-state.js#L45-L58"
+```
+
+四个值构成一套坐标：
+
+- `DynamicState.DATA = 1`：动态访问发生在 **RSC 渲染阶段**（服务端组件执行时读了 cookie/请求头之类）
+- `DynamicState.HTML = 2`：动态访问发生在 **HTML 外壳渲染阶段**（连外壳本身都依赖请求上下文）
+- `DynamicHTMLPreludeState.Empty = 0` / `Full = 1`：这次产出的外壳 prelude 是「空的」还是「完整的」
+
+两个枚举合起来，就能描述「哪一段被推迟了、推迟到什么程度」——**区分 DATA 与 HTML 至关重要**：前者意味着外壳已完整、只差数据；后者意味着外壳本身还不完整，续传时需要重算外壳。
+
+## ② 序列化布局：长度前缀为什么省不掉
+
+```js title="next/dist/server/app-render/postponed-state.js（序列化）" source="next/dist/server/app-render/postponed-state.js#L59-L77"
+```
+
+注释里把两种布局都写明了：
+
+```text
+无 fallback route params：  <postponedString.length>:<postponedString><renderResumeDataCache>
+带 fallback route params：  <replacements.length><replacements><data>
+                           → 再整体套一层 <N>:…<cache>
+```
+
+关键在于 `renderResumeDataCache` 是**压缩后的二进制**（base64 + deflate），尾部里可能含有任意字节，**不存在可靠的分隔符**。所以只能把前一段的长度写在最前面：先读数字 → 按长度切出载荷 → 剩下的全是缓存尾部。
+
+这解释了一个看似奇怪的设计：为什么字符串最前面是 `4:null` 这样的内容——`4` 是长度，`null` 是「动态数据型」的载荷本身。
+
+## ③ 解析：先量长度，再切两段
+
+```js title="next/dist/server/app-render/postponed-state.js（解析入口）" source="next/dist/server/app-render/postponed-state.js#L81-L98"
+```
+
+值得注意的三处：
+
+- **缺长度前缀直接判为不变量错误**（`E1388`），但错误信息里**不含原始 state**——注释解释了原因：它可能很大，而且可能包含敏感的序列化数据
+- `postponedString === 'null'` → 走**动态数据型**（type 1）：外壳完整，推迟的只是数据
+- 以数字开头 → 先读出 fallback replacements 的长度，再把「预渲染时用的占位值」逐个替换成真实动态参数（`getDynamicParam`），最后才是 `JSON.parse`
+
+替换这一步是把 PPR 的「用参数兜底预渲染」接回真实路径的关节：预渲染阶段不知道真实参数，于是写入占位值；解析时再换成真值。
+
+## ④ 失败时降级，而不是把请求打挂
+
+```js title="next/dist/server/app-render/postponed-state.js（容错）" source="next/dist/server/app-render/postponed-state.js#L140-L153"
+```
+
+解析失败时返回的是 `{ type: 1, renderResumeDataCache: <空缓存> }`——**外壳照常渲染**，动态区块重新变回 pending 状态，等待客户端导航或后续请求补齐。
+
+::: info
+这条设计对排障很关键：postponed state 损坏时，用户在界面上看到的是「某个区块还在加载」，而不是整页 500。真正需要警惕的是**它悄悄降级**——页面看起来正常，但那一块内容永远补不上来。遇到「某些区块长期停在骨架」时，回查渲染日志是第一步。
+:::
+
+## ⑤ 诊断为什么只打印长度
+
+```js title="next/dist/server/app-render/postponed-state.js（诊断）" source="next/dist/server/app-render/postponed-state.js#L155-L191"
+```
+
+诊断字段全部是**长度、结构标志或错误码**：`stateLength`、`hasLengthPrefix`、`declaredPostponedLength`、`postponedStringComplete`、`resumeDataCacheTailLength`、`errorCode`——注释里明确写着「never the state bytes themselves」。
+
+它同时给出了一份失败形状的对照表，非常实用：
+
+| 症状 | 含义 |
+| --- | --- |
+| `postponedStringComplete: false` | 声明的长度 `N` 大于实际收到的内容，载荷本身被截断 |
+| `errorCode: 'Z_BUF_ERROR'` | 压缩尾部被截断（解压时输入就耗尽了） |
+| `errorCode: 'Z_DATA_ERROR'` | 尾部字节损坏，不只是短 |
+| `hasLengthPrefix: false` | 完全没有 `<N>:` 前缀，输入为空或格式错误 |
+
+::: tip
+这份实现在可观测性上是个范本：**日志里永远不要把用户数据的原始字节打出来**。把「长度 + 结构 + 错误码」作为诊断语言，既定位得了问题，又不制造新的敏感数据泄漏面。
+:::
+
+## ⑥ 「空外壳」怎么判定
+
+```js title="next/dist/server/app-render/postponed-state.js（空外壳）" source="next/dist/server/app-render/postponed-state.js#L199-L228"
+```
+
+`isEmptyHTMLPrelude` 做的事与解析同构：跳过长度前缀、跳过可选的 replacements 前缀，读出 `[preludeState, postponed]`，最后一句 `data[0] === 0`——`preludeState` 为 `Empty` 即空外壳。
+
+它的用途是让调用方判断「这次响应到底给了多少东西」：空外壳意味着几乎全部内容都要靠续传来补，完整外壳则说明只有数据段被推迟。
+
+```tsx quiz="postponed state 解析失败时，框架为什么选择降级成 type 1（动态数据型），而不是抛错让请求失败？"
+因为静态外壳已经完全渲染出来了，用户至少能立刻看到它；
+把延迟的部分重新变回 pending，客户端导航与时序续传还能继续补齐。
+
+抛错会把「部分可用」变成「整页不可用」，而 postponed state 的损坏
+往往只影响一小块内容——代价与收益完全不匹配。
+
+代价是它降级得比较安静：页面看起来正常，那一块却可能一直补不上来，
+所以「区块长期停在骨架」是需要专门回查日志的症状
+（排障路径见 /troubleshooting）。
+```
+
+## 与章节的对应
+
+本篇补的是 [8.2 进阶理解：Cache Components 时代的 ISR 与软动态](/chapters/08-rendering/advanced) 背后的运行时机制：软动态的「软」体现在外壳与数据的分离，而 postponed state 就是这份分离的载体。想知道运行时如何决定「这次该产静态还是动态」，可以接 [8.4 原理篇：手写一个渲染模式决策器](/chapters/08-rendering/internals)；想延续源码线，可以接着看[源码深潜：use cache 的运行时包装与缓存条目](/deep-dives/use-cache-wrapper)。
+
+## 小结
+
+- postponed state 记录「哪些内容这次没算出来」，由服务端产出、客户端解析，实现跨请求续传
+- `DATA` 与 `HTML` 两种动态来源决定了续传时要不要重算外壳；`Empty`/`Full` 描述外壳完整度
+- 序列化布局是 `<长度>:<载荷><压缩缓存>`——尾部是二进制，只能用长度前缀切分
+- 解析失败降级为「外壳可用 + 动态重新 pending」，不把整页打挂
+- 诊断只输出长度、结构与错误码，从不回显原始字节——可观测性的正确姿态
+
+## 源码深潜：预取策略的分级与链接意图调度
+
+## 从一次悬停说起
+
+第 6 章的主线是「导航之所以瞬时，是因为内容早就到了」。到了代码层，「早就到了」不是一句形容——它由三段机制拼成：**策略分级**（这次预取要拿到多完整的内容）、**优先级调度**（谁先发、谁让路）、**缓存落位**（拿到的东西存哪儿）。
+
+这一篇顺着 `Link` 组件的一个 `prefetch` 属性往下走，看前两段。
+
+## ① `prefetch` 属性怎么变成一次请求
+
+`Link` 把 `prefetch` 归一化成「意图」，再由意图映射成「策略」：
+
+```js title="next/dist/client/app-dir/link.js（节选）" source="next/dist/client/app-dir/link.js#L108-L110"
+```
+
+映射规则本身很短，但分支里藏着一个与 Cache Components 相关的开关：
+
+```js title="next/dist/client/app-dir/link.js（策略映射）" source="next/dist/client/app-dir/link.js#L403-L415"
+```
+
+连起来读就得到本章最实用的一张表：
+
+| `prefetch` | 归一化意图 | 实际策略 | 拿到的内容 |
+| --- | --- | --- | --- |
+| `null`（默认） | `auto` | `PPR` | 视口内链接 → 外壳 + 预渲染的参数内容 |
+| `true` | `full` | `Full` | 完整数据，代价是请求更重 |
+| `false` | `none` | 不预取 | 点击时才发请求 |
+
+::: warn
+`prefetch={false}` 不是「少预取一点」，而是**完全不预取**：点击那一刻才开始往返。它适合明确知道会拖累首屏的重页面，但不适合列表里的所有链接——那会把第 6 章讲的收益一次还回去。
+:::
+
+## ② 策略是一架有顺序的梯子
+
+六档策略不是随便编号的，源码里那两行注释说得非常直白：
+
+```js title="next/dist/client/components/segment-cache/types.js（节选）" source="next/dist/client/components/segment-cache/types.js#L52-L76"
+```
+
+三个信息量很大的点：
+
+- **刻意排序**：档位从 0 到 5 单调递增「完整度」，于是两个缓存条目谁更完整，只需要比较数字——不需要写一堆 `if/else`
+- **数值不过线**：客户端内部的编号**从不发给服务端**；请求头 `next-router-prefetch` 的值是另外显式映射的。也就是说，重编号是安全的，但**别把数字写进日志或缓存键**，那会把内部实现变成外部契约
+- **每档代表什么**：`StaticShell` 是「每段静态预取响应抽出的 App Shell」，能包含的内容少于 `RuntimeShell`（静态响应装不下依赖 cookie/请求头的内容），更少于具体路径上的 `PPR`（那里包含预渲染的参数相关内容）；`Full` 才是完整数据
+
+## ③ 优先级只有三档，其中一档专供「意图」
+
+```js title="next/dist/client/components/segment-cache/types.js（优先级）" source="next/dist/client/components/segment-cache/types.js#L36-L51"
+```
+
+`Intent = 2` 的注释值得逐句读：它只分配给**最近一次悬停/触碰的那个链接**，并且有**专门的网络带宽预留**；同一时刻只存在一个 Intent 级任务，新 Intent 出现时旧的降级为 `Default`。
+
+这解释了一个反直觉的现象：把鼠标快速扫过一排链接，并不会让所有预取平等地慢下来——最后停住的那一个会插到最前面，前面的退居默认队列。
+
+## ④ 调度器怎么把「预留」落实下来
+
+「最近悬停的那个」在调度器里有一个真实变量：
+
+```js title="next/dist/client/components/segment-cache/scheduler.js（节选）" source="next/dist/client/components/segment-cache/scheduler.js#L62-L70"
+```
+
+而重新排队时，这条意图会被保住：
+
+```js title="next/dist/client/components/segment-cache/scheduler.js（重新排队）" source="next/dist/client/components/segment-cache/scheduler.js#L145-L158"
+```
+
+- `sortId` 单调递增、**越大越先处理**：重新悬停等价于「取消 + 新建」，但复用了原任务对象，拿到新的 sortId 后跳到同优先级队首
+- `task === mostRecentlyHoveredLink ? Intent : priority`：被重新悬停的链接**即使这次重排给的是低优先级，也维持 Intent**——避免「用户明明指回了它，却被降级」的割裂
+- 注释里还留了两个容易误读的细节：fallback-retry 状态**刻意不重置**（一个任务最多跑一轮重试，反复悬停不会开第二轮）；`REVALIDATION_COOLDOWN_MS = 300` 的冷却期会阻塞预取任务，等 CDN 把新缓存传播开再发请求
+
+::: info
+300ms 冷却的存在说明预取不只要「快」，还要「对」：revalidate 刚发生时，边缘节点可能还在提供旧内容。宁可晚 300ms 再预取，也不要把一份即将过期的数据写进客户端缓存。
+:::
+
+## ⑤ 这套设计的收益与代价
+
+- **收益**：悬停即命中，点击时不需要网络往返——这正是「Instant Navigations」四个字的实现来源
+- **代价**：可能预取用户永远不点的内容，消耗带宽与客户端 CPU；出口是 `prefetch={false}`，以及默认的 `auto` 只处理**视口内**的链接
+- **边界**：策略决定「拿多完整」，优先级决定「谁先拿」；两者都不管「拿到的东西放多久」——那是客户端缓存与 `use cache` 的职责（见[源码深潜：use cache 的运行时包装与缓存条目](/deep-dives/use-cache-wrapper)）
+
+```tsx quiz="用户先悬停链接 A、再悬停 B、又悬停回 A。此刻哪个预取任务占着 Intent 优先级？为什么注释强调「同一时刻只可能有一个 Intent 任务」？"
+A 占着 Intent。
+
+每次悬停都会更新那个"唯一指针"（mostRecentlyHoveredLink）；
+B 被顶下来后降级为 Default。再次悬停 A 时，
+reschedulePrefetchTask 复用原任务对象、把 sortId 加大抢到队首，
+又因为 A 恰好是 mostRecentlyHoveredLink，所以它不会被降级。
+
+"只有一个 Intent" 是带宽预留的前提：如果允许多个 Intent，
+预留就成了"大家都预留"，等于没有预留。
+```
+
+## 与章节的对应
+
+本篇的调度链路对应第 6 章的三节：策略分级对应 [6.1 基础认知：为什么导航是瞬时的](/chapters/06-instant-navigation/basics)，优先级与冷却对应 [6.2 进阶理解：外壳合并、URL 级预取与 Instant Insights](/chapters/06-instant-navigation/advanced)，把两者接到真实代码上，则是 [6.4 原理篇：手写 Partial Prefetch](/chapters/06-instant-navigation/internals)。
+
+## 小结
+
+- `prefetch` 先归一化成意图（auto/full/none），再映射成策略（PPR/Full/不预取）
+- 六档策略**刻意按完整度排序**，但编号只在客户端内部比较，从不跨线传输
+- 优先级只有三档；唯一的那档 `Intent` 保留给最近悬停的链接，并占用专用带宽
+- 调度器用单调递增的 `sortId` 决定同优先级顺序，且重新悬停会保住 Intent
+- 300ms 的 revalidation 冷却提醒：预取追求的不只是快，还要避免搬运即将过期的数据
+
+## 源码深潜：软导航生命周期与预取状态机
+
+## 从一次点击和一次后退说起
+
+点一个站内链接，地址栏立刻变成目标 URL，内容却晚了几十毫秒才接上；按后退键时，上一页几乎在同一帧恢复，没有骨架屏，也没有网络往返。
+
+这两个现象属于同一条软导航生命周期的两端：**前进**是「查预取状态，能复用就复用，不能就补一次请求」；**后退**是「从另一张表里读已经渲染过的结果」。把它们连起来看，`EntryStatus` 这个四态枚举就不只是缓存字段，而是一台真正的状态机。
+
+## ① 导航入口先查状态，而不是先发请求
+
+`navigate` 的硬导航分支之外，真正干活的是 `navigateImpl`：
+
+```js title="next/dist/client/components/segment-cache/navigation.js（按缓存状态分流）" source="next/dist/client/components/segment-cache/navigation.js#L76-L113"
+```
+
+这里有三条路径，值得逐一对照：
+
+- **`Fulfilled`**：缓存里有一棵完整的路由树，直接走 `navigateUsingPrefetchedRouteTree`。这就是「点击时不需要网络」的来源
+- **`Rejected`**：不是「没有数据」，而是「这条路由的预取被明确否定了」。代码刻意不为它构造 optimistic route，因为拒绝可能来自基于 search params 的 rewrite 或 redirect；猜一棵树反而会渲染错页面
+- **`null` 或其它状态**：没有可用的预取，走 `navigateToUnknownRoute`，由服务端在一条动态响应里同时给出结构与数据
+
+注意 optimistic route 只在 `route === null` 或状态不是 `Rejected` 时才尝试。这是一个很实用的边界：**负缓存也要被尊重**，否则「猜错再重试」会把一次错误放大成两次渲染。
+
+## ② 状态机只有四个状态
+
+路由树与单段数据共用同一个枚举：
+
+```js title="next/dist/client/components/segment-cache/cache-map.js（缓存条目状态）" source="next/dist/client/components/segment-cache/cache-map.js#L52-L58"
+```
+
+四个状态的含义不是 HTTP 语义，而是**缓存条目的生命周期**：
+
+| 状态 | 含义 | 谁会产生 |
+| --- | --- | --- |
+| `Empty` | 条目已创建，但请求还没发起 | `createDetachedSegmentCacheEntry` / 路由条目占位 |
+| `Pending` | 请求在途，条目带 `promise` 与阻塞任务 | 预取调度器真正发起请求前 |
+| `Fulfilled` | 数据可用，带 `rsc`、`staleAt`、`isPartial` | 响应处理或 BFCache 命中 |
+| `Rejected` | 明确失败或取消，但仍有 `staleAt` | 请求失败、取消或服务器拒绝 |
+
+`Rejected` 带 `staleAt` 这一点常被忽略：它意味着拒绝不是永久的，条目过期后仍可重新尝试。状态机因此不是「失败即终点」，而是「失败也要有过期时间」。
+
+## ③ 预取如何把 `Empty` 推到 `Pending`
+
+真正发起请求前，条目要先完成一次状态跃迁：
+
+```js title="next/dist/client/components/segment-cache/cache.js（Empty → Pending）" source="next/dist/client/components/segment-cache/cache.js#L807-L835"
+```
+
+这段代码做了四件事：
+
+- **状态改为 `Pending`**，并记录这次请求的 `fetchStrategy`
+- **`Full` 策略把 `isPartial` 置为 `false`**：完整响应到达后，导航请求可以安全地省略这一段，不必重复取
+- **在发请求前写入 `version`**：下一次缓存版本递增时，这个条目会「事实上被驱逐」。写在请求前而不是响应后，是为了保证版本一定早于服务端读数据
+- **挂上阻塞任务**（测试模式下还有导航锁）：后续的 `fulfillSegmentCacheEntry` 或 `rejectSegmentCacheEntry` 会 resolve promise 并 `pingBlockedTasks`，所以等待者不需要轮询状态
+
+这也是「预取状态机」最容易被误解的地方：它不是靠定时器检查状态，而是靠**阻塞任务 + promise** 推进。状态字段只是给读取方做分支判断用的。
+
+## ④ 未命中时，一次动态请求当两次用
+
+没有预取的路由不会先阻塞等预取，而是直接发一条同时包含静态与动态数据的请求：
+
+- `navigateToUnknownRoute` 根据 `freshnessPolicy` 选择 `dynamicRequestTree`：默认、历史遍历、手势导航只带当前树；水合、刷新、HMR 刷新则要求整条路由
+- 响应若是一个字符串，说明服务端要求 MPA 导航，直接 `completeHardNavigation`
+- 否则用 `convertServerPatchToFullTree` 把动态响应**伪装成一棵预取树**，再走与「预取命中」相同的缓存写入流程
+- 响应里如果带 `staticStageData` 或 `runtimePrefetchStream`，还会顺手写进 segment cache，让下一次导航直接命中
+
+所以「未命中」并不是慢路径的全部：这一次请求的产物会被拆成结构、静态段与运行时段，分别落入缓存。第二次访问同一路由时，它已经变成 `Fulfilled`。
+
+## ⑤ 提交阶段：软的边界是「树没有换根」
+
+拿到数据后，`completeSoftNavigation` 负责把结果装进新的 router state：
+
+```js title="next/dist/client/components/segment-cache/navigation.js（软导航提交）" source="next/dist/client/components/segment-cache/navigation.js#L358-L378"
+```
+
+三个字段决定了这次导航的「软」边界：
+
+- **`changedPath` 决定新的 `nextUrl`**：它描述从旧树到新树哪一段变了，服务端靠它决定拦截路由的行为
+- **`previousNextUrl` 保存的是「取回这份数据时用的 Next-Url」**：刷新时要沿用它，才能保持与首次导航相同的拦截语义
+- **`onlyHashChange` 单独建模**：只有 hash 变化时，不重新取数，只触发滚动
+
+如果目标不同源、或者服务端返回 MPA 重定向，走的是 `completeHardNavigation`；如果是历史遍历，则走 `completeTraverseNavigation`。软导航不是「所有导航都软」，而是「同源 App Router 导航且树可复用」时才软。
+
+## ⑥ 后退为什么几乎瞬时
+
+后退走的是另一张表：`bfcacheMap`。它在导航提交后写入 `rsc`、`prefetchRsc`、`head`、`navigatedAt` 与 `dynamicStaleAt`，并且：
+
+- **`invalidateBfCache` 只做一件事：递增 `currentBfCacheVersion`**。版本一换，旧条目整体失效，不需要逐条删除
+- **后退/前进会忽略 `staleAt`**：注释明确写了 back/forward navigation 不看过期时间。理由是用户对「返回上一页」的期待是恢复现场，而不是重新校验
+- **BFCache 命中可以直接把 `Empty` 段升级成 `Pending` 再同步 fulfill**，因为数据已经在内存里，没有真实请求要等
+
+这也解释了为什么后退有时会看到「旧数据」：它不是没刷新，而是设计上优先恢复现场。需要新鲜度的场景应使用刷新或重新导航，而不是依赖后退。
+
+## ⑦ 收益、代价与边界
+
+- **收益**：预取命中时点击零往返；未命中时一条请求同时完成结构与数据；后退从 BFCache 恢复，不触发网络
+- **代价**：segment cache 与 BFCache 都占内存，需要 LRU 与版本驱赶；`Rejected` 条目会占位到过期；预取可能为永不点击的链接付出带宽
+- **边界**：状态机描述的是**客户端缓存条目**，不是服务端渲染状态；`Fulfilled` 也不保证数据新鲜，`staleAt` 仍会触发后台校验。策略分级与优先级调度见[源码深潜：预取策略的分级与链接意图调度](/deep-dives/router-prefetch)
+
+```tsx quiz="路由缓存条目是 Rejected 时，navigateImpl 为什么不去构造 optimistic route，而是直接走未知路由请求？如果强行构造，最可能错在哪一层？"
+因为 Rejected 可能来自基于 search params 的 rewrite 或 redirect，
+预取已经明确告诉客户端「这条 URL 的树不是你想的那样」。
+optimistic route 只适合「完全没有信息」的 null 情况。
+
+强行构造会错在路由树这一层：树错了，后续所有段的
+请求键、拦截路由与布局复用都会跟着错，
+最后要么渲染出错误页面，要么再用一次导航来纠正。
+```
+
+## 与章节的对应
+
+本篇对应第 6 章的三节：[6.1 基础认知](/chapters/06-instant-navigation/basics)建立「点击之后在等什么」的直觉，[6.2 进阶理解](/chapters/06-instant-navigation/advanced)讲预取模型与外壳合并，[6.4 原理篇](/chapters/06-instant-navigation/internals)把导航拆成可实现的步骤。预取策略本身见[源码深潜：预取策略的分级与链接意图调度](/deep-dives/router-prefetch)。
+
+## 小结
+
+- `navigateImpl` 先读路由缓存状态：`Fulfilled` 复用，`Rejected` 不猜树，缺失才发动态请求
+- `EntryStatus` 是四态生命周期：`Empty → Pending → Fulfilled / Rejected`，拒绝也带过期时间
+- 预取在发请求前把条目推到 `Pending` 并写入 `version`，等待者靠 promise 与阻塞任务推进，不靠轮询
+- 未命中时一条动态请求同时产出结构、静态段与运行时段，并回写成预取树
+- `completeSoftNavigation` 用 `changedPath`、`previousNextUrl`、`onlyHashChange` 划定软导航边界
+- 后退走 BFCache，靠版本号整体失效、忽略 `staleAt`，用「恢复现场」换瞬时体验
+
+## 源码深潜：Server Action 的请求管线与安全模型
+
+## 从一次部署后的 404 说起
+
+部署完成后，某个还开着旧页面的用户提交表单，服务端返回 404，响应头里带着 `next-action-not-found: 1`。同一天，另一个从外部站点发起的表单 POST 被拒绝，日志里是 `Invalid Server Actions request`。
+
+两个现象看起来都是「业务报错」，实际上属于安全模型的不同层：前者是**引用 ID 在本次构建里不存在**，后者是**请求来源不可信**。Server Action 的管线并不是从函数体开始的，而是从「这次 POST 值不值得被当成函数调用」开始的。已有[源码深潜：Server Action 的一次调用链](/deep-dives/action-handler)梳理过完整调用顺序；这一篇换一个视角，专门看**信任是怎么一层层建立的**。
+
+## ① 入口：先分类，再决定要不要解码
+
+真正调用函数之前，`handleAction` 先调用 `getServerActionRequestMetadata(req)`。这个函数在 `next/dist/server/lib/server-action-request-meta.js#L24-L48` 里，只做四件事：
+
+- 从 `next-action` 头取出 `actionId`，没有就是 `null`
+- `content-type` 是 `application/x-www-form-urlencoded` 且方法为 POST，标记 `isURLEncodedAction`
+- `content-type` 以 `multipart/form-data` 开头且方法为 POST，标记 `isMultipartAction`
+- `next-action` 存在、是字符串且方法为 POST，标记 `isFetchAction`
+
+三者取并集得到 `isPossibleServerAction`。注意「可能」这个词：任何 multipart 或 urlencoded 的 POST 都会命中，但它们未必真是 action。真正的判定要等表单字段或 Flight 载荷解码之后。URL-encoded 这条路还刻意保留到 handler 内部再早退，目的是不改变普通页面组件处理 POST 的既有行为。
+
+这也是安全模型的第一条原则：**请求头只用来分流，不用来授权**。`content-type` 和 `next-action` 都由客户端控制，伪造成本为零。
+
+## ② 信任根在构建期：42 个字符的引用 ID
+
+客户端发来的并不是函数名，而是一段固定长度的引用：
+
+```js title="next/dist/shared/lib/server-reference-info.js（引用 ID 的编码）" source="next/dist/shared/lib/server-reference-info.js#L31-L51"
+```
+
+这段代码说明了两件事：
+
+- **长度固定为 42**：`mightBeServerReferenceId` 只比较长度，是一个极廉价的预筛。它不能证明 ID 有效，只能快速排除明显畸形的输入
+- **前两个十六进制字符是信息字节**：最高位区分 `server-action` 与 `use-cache`，中间六位是「前 6 个参数里哪些被使用」的掩码，最低位表示是否有剩余参数。`omitUnusedArgs` 依赖这个掩码裁掉未使用的尾参
+
+所以 ID 本身携带的是**调用形态**，不是权限。真正的信任根在构建期：
+
+```js title="next/dist/build/webpack-config.js（把构建密钥作为哈希盐）" source="next/dist/build/webpack-config.js#L438-L455"
+```
+
+`serverReferenceHashSalt` 的值是本次构建生成的随机 `encryptionKey`（见 `next/dist/build/index.js#L644-L650`）。它参与服务端引用的生成，因此：
+
+- ID 不能靠「猜函数名」推出来；同一份源码在不同构建里会得到不同 ID
+- 旧页面拿着旧 ID 来请求新部署，通常会命中 `ActionNotFoundError`——这就是本文开头那个 404
+- 但 ID 会出现在客户端 bundle 里，**它不是秘密**。哈希只防猜测，不防重放；真正的允许列表是服务端的 `serverModuleMap`
+
+## ③ 第一道运行时闸门：no-store 与同源
+
+通过分类后，处理器先把这次请求钉成不可缓存，再检查来源：
+
+```js title="next/dist/server/app-render/action-handler.js（默认 no-store 与 origin 解析）" source="next/dist/server/app-render/action-handler.js#L424-L437"
+```
+
+两个动作各有含义：
+
+- **`workStore.fetchCache = 'default-no-store'`**：action 是可写操作，它触发的 fetch 默认不能进数据缓存。这不是建议，而是请求级默认值
+- **`origin` 被解析成 host**：`origin: null` 会被保留成字符串 `"null"`，因为它同样不能与真实 host 匹配
+
+随后的判断在 `L440-L464`：没有 `origin` 时只记警告并放行，理由是手工请求或不安全浏览器不会携带用户凭证；有 `origin` 但与 `host` / `x-forwarded-host` 不一致时，只有命中 `serverActions.allowedOrigins` 才放行，否则直接中止并记录「This is an attack」。
+
+这里要划清边界：**origin 检查防的是 CSRF，不是越权**。它能阻止别的站点借用户的 cookie 发起写操作，但不能阻止已登录用户调用他本无权调用的 action。授权必须写在 action 内部。
+
+## ④ 第二道运行时闸门：体积上限在流里执行
+
+解码 Flight 数据之前，还有一个容易被忽略的资源边界：
+
+```js title="next/dist/server/app-render/action-handler.js（流式体积上限）" source="next/dist/server/app-render/action-handler.js#L665-L680"
+```
+
+`bodySizeLimit` 默认是 `1 MB`，可以通过 `serverActions.bodySizeLimit` 调整。实现上有三个细节：
+
+- **逐块累加，超过就抛 413**：不信任 `Content-Length`，因为分块传输或流式请求可以不给、也可以给错
+- **Node 路径用 `Transform` 夹在 `pipeline` 里**：multipart 还额外把 `fieldSize` 传给 busboy，避免单个字段无限增长
+- **Edge 路径手动读 `req.body` 并累加**：注释解释了为什么不能直接 `formData()`——那会绕过整个上限
+
+这条闸门保护的不只是内存，还有 Flight 解码器：没有上限，一个构造的深层嵌套载荷就能让解码阶段消耗掉整个 worker。
+
+## ⑤ 查找、预扫描与解码：允许列表在服务端
+
+过了体积关，才进入「这个 ID 到底指向哪个模块」：
+
+- `getActionModIdOrError` 查 `serverModuleMap`，查不到时分两种：格式合法但不存在 → `ActionNotFoundError`；格式不合法 → `InvalidServerReferenceIdError`
+- MPA 表单在 `decodeAction` 之前，先由 `areAllActionIdsValid` 预扫 `$ACTION_ID_...` 字段与 action descriptor，把伪造引用挡在解码前
+- 真正解码时，fetch action 用 `decodeReply` 还原参数数组，MPA action 用 `decodeAction` 解出函数，`useActionState` 再用 `decodeFormState` 承接表单状态
+- 当前 worker 没有这个模块时，请求可能被转发给有模块的 worker，并用 `x-action-forwarded` 防止环路
+
+这一层的安全性来自**服务端清单**，而不是 ID 的长度或哈希。哈希让 ID 难以伪造，清单让「即使拿到合法 ID 也只能调用它指向的那一个函数」。
+
+## ⑥ 执行与响应：安全边界落在 phase 里
+
+函数真正执行时，外层是 `actionAsyncStorage.run({ isAction: true })`，请求阶段被切成 `action`：
+
+- **`cookies().set()` 只在 action phase 合法**：渲染期写入会破坏纯函数语义，同一次请求的多次渲染可能得出不同响应头
+- **执行完切回 `render` 前要回灌可变 cookie**：否则同一次请求里的重渲染读不到刚写入的值
+- **响应不是裸结果**：fetch action 会生成一次 Flight，把 `actionResult` 与（除非跳过）重渲染后的页面一起返回；响应头保持 `no-store`
+- **`revalidatePath` / `revalidateTag` 会先落实失效再重渲染**；没有失效时跳过页面渲染，只返回 action 结果
+
+也就是说，执行阶段既是副作用的唯一合法窗口，也是「返回值 + 新 UI」同往返抵达的实现点。
+
+## ⑦ 收益、代价与边界
+
+- **收益**：固定长度 ID 与构建盐降低了猜测与跨部署误命中；origin/host 检查挡住跨站写请求；流式体积上限保护内存与解码器；`serverModuleMap` 提供真正的允许列表
+- **代价**：每次构建 ID 都会变，旧标签页必然遇到 deployment skew，需要错误处理或版本提示；`1 MB` 上限对文件上传类 action 不友好，必须改走 Route Handler 或对象存储直传；bound 参数也会计入体积
+- **边界**：这套模型不提供身份认证、不提供按 action 的限流，也不替你校验业务参数。**每个 Server Action 都是一个公开的 POST 端点**，函数体内必须自己检查会话、权限与输入。认证与授权的整体设计见[7.2 进阶理解](/chapters/07-server-actions/advanced)与[第 11 章](/chapters/11-auth-security/advanced)
+
+```tsx quiz="action ID 由构建密钥做哈希盐、长度固定为 42，为什么仍然必须在服务端查 serverModuleMap？只做 mightBeServerReferenceId 的长度检查，能挡住什么、挡不住什么？"
+长度检查只能挡住「格式明显不对」的输入，例如随手拼的短字符串。
+它挡不住：拿到客户端 bundle 里的真实 ID 后重放、
+跨部署复用旧 ID、或者构造一个长度恰好为 42 的假 ID。
+
+serverModuleMap 才是允许列表：它把 ID 映射到本次构建里真实存在的模块。
+哈希解决的是「难猜」，清单解决的是「只允许调用存在的那个函数」；
+两者都不能替代函数体内的鉴权。
+```
+
+## 与章节的对应
+
+本篇对应第 7 章的三节：[7.1 基础认知](/chapters/07-server-actions/basics)建立「函数调用其实是 POST」的直觉，[7.2 进阶理解](/chapters/07-server-actions/advanced)讲 pending 与表单状态的边界，[7.4 原理篇](/chapters/07-server-actions/internals)把调用链拆成引用、清单与一次 POST。安全侧的整体约束见[第 11 章](/chapters/11-auth-security/advanced)。
+
+## 小结
+
+- 入口只用请求头做分类，`isPossibleServerAction` 是「可能」而不是「已授权」
+- action ID 固定 42 字符，前两字符编码类型与参数掩码；构建密钥作为哈希盐，换构建就换 ID
+- ID 会出现在客户端，哈希防猜测不防重放；服务端 `serverModuleMap` 才是允许列表
+- origin 与 host 不一致即按 CSRF 中止，`allowedOrigins` 是反向代理场景的出口；它不替代鉴权
+- 体积上限在流式管道里逐块执行，默认 1 MB，不信任 `Content-Length`
+- 执行被包在 `action` phase 里，cookie 写入与失效落实都发生在这个窗口；响应是带 `no-store` 的一次 Flight 重渲染
+
+## 源码深潜：Turbopack 的增量构建图与缓存失效
+
+## 从第二次构建变快说起
+
+同一个项目连续构建两次，第一次九十秒，第二次二十几秒；但如果中间改了 `next.config`、`.env` 或 `tsconfig`，第三次又回到九十秒。开发服务器里则是另一组现象：改一个组件，页面几百毫秒内更新；改一个路由处理函数，`'use cache'` 的结果也跟着失效，但内存没有一路涨上去。
+
+这三组现象分别对应三条机制：**持久化缓存**（产物能不能跨进程复用）、**增量应用**（一次变更能不能只改图的一部分）、**代际失效**（缓存键怎么知道代码已经换了）。
+
+需要先划清引用层次：增量构建图本身在 Turbopack 的 Rust 内核里，`next/dist` 看不到节点和边的数据结构。这一篇引用的是 Next.js 编排层能控制的东西——**交给内核的参数**与**触发失效的信号**。这个边界本身，就是理解 16.3 Turbopack 缓存行为的关键。
+
+## ① Next 交给内核的四个开关
+
+构建入口 `turbopackBuild` 组装的 `createProject` 参数，几乎决定了持久化缓存的全部外部行为：
+
+```js title="next/dist/build/turbopack-build/impl.js（构建期缓存参数）" source="next/dist/build/turbopack-build/impl.js#L84-L133"
+```
+
+逐项读：
+
+- **`persistentCaching` 来自 `experimental.turbopackFileSystemCacheForBuild`**：它被原样传给内核的 `isPersistentCachingEnabled`。也就是说，构建期是否落盘复用，是由 Next 配置显式决定的，而不是内核自己猜
+- **`dependencyTracking` 跟着持久化缓存一起开**：`persistentCaching || hasDeferredEntries`。没有依赖追踪，就没有「这个产物依赖了哪些文件」的记录，缓存命中也就无从判断
+- **`turbopackMemoryEviction` 与 `skipCompaction` 是资源侧调节**：前者对应内存回收模式，后者在 `NEXT_USE_POST_BUILD=1` 时跳过压缩，避免后构建阶段再花一次磁盘整理的成本
+- **`turbopackSeedCacheFromWorktree` 走的是另一条路**：它不是「本次构建的缓存」，而是从同一仓库的其它 worktree 里找一份最新的同版本缓存，直接种进来
+
+最后一个细节值得注意：`rootPath`、`projectPath`、`nextConfig`、`defineEnv`、`buildId` 都参与了项目创建。它们任何一个变化，都可能让缓存键整体不再匹配——这正是后面「改配置就变慢」的伏笔。
+
+## ② 缓存的失效单位是「版本目录 + 不可变文件」
+
+持久化缓存的目录布局，比开关更能说明它为什么敢跨进程复用：
+
+```js title="next/dist/lib/turbopack-cache-seed.js（从 worktree 种缓存）" source="next/dist/lib/turbopack-cache-seed.js#L62-L104"
+```
+
+三个设计选择：
+
+- **版本目录隔离**：缓存写在 `<distDir>/cache/turbopack/<version>` 下，`version` 来自 `getTurbopackCacheVersion()`。内核二进制或缓存格式变了，新版本自然落在一个空目录，不会读到旧格式
+- **只在空目录上种**：`dirHasEntries(targetVersionDir)` 为真就放弃。种子缓存永远不会覆盖一份正在被写的目标缓存
+- **临时目录 + rename**：先种到 `<target>.seeding`，成功后再原子改名。进程中断只会留下一个临时目录，清理掉即可，不会产生半份可被读取的缓存
+
+更关键的是文件的写法。同一个文件里，缓存文件按后缀分成两类：
+
+- `.sst`、`.blob`、`.meta`、`.del` 是不可变文件：种缓存时用硬链接（`linkSync`）共享 inode，说明内核从不原地修改它们
+- `CURRENT`、`LOG` 这类可变或未知文件：复制一份，保证各自有独立 inode
+
+`.del` 的存在尤其能说明问题：删除不是「改旧文件」，而是写一个删除标记，再让新版本覆盖。不可变设计换来的是无锁读取、崩溃后仍能读到一致快照；代价是磁盘上会积累旧版本，需要靠压缩/回收来清理。
+
+## ③ Dev 下的两条增量路径：partial 与 restart
+
+开发服务器把内核的 HMR 事件直接接进 Node 运行时：
+
+```js title="next/dist/server/dev/hot-reloader-turbopack.js（服务端 HMR 应用）" source="next/dist/server/dev/hot-reloader-turbopack.js#L151-L208"
+```
+
+这段代码把「增量」拆成两种截然不同的结果：
+
+- **`partial`**：尝试调用 `__turbopack_server_hmr_apply__(update)`，把变更应用到已经加载的模块。`EcmascriptMergedUpdate` 是 Node 运行时唯一认识的指令；`ChunkListUpdate` 是浏览器侧的东西
+- **`restart`**：协议层面已经判定这次变更无法增量应用，于是 `reEvaluateAllModulesExpensive()` 清掉模块缓存、从磁盘重新求值
+- **apply 失败也回退到全量**：只要运行时抛错，就清 `require.cache`，下次请求重新加载。这条兜底比「想办法局部修补」更可靠
+- **空的 partial 不触发失效**：`updatedChunkPaths.length === 0` 时只推进版本状态，不失效 manifest，也不通知浏览器重取 RSC
+
+这里要区分两张「缓存」：**构建图**可以被增量更新，但 Node 的模块缓存不一定能。图更新成功而模块缓存无法应用时，Next 选择全量重求值，而不是让两边状态分叉。
+
+## ④ 配置变更没有增量路径
+
+`.env`、`tsconfig.json`、`jsconfig.json` 这类文件不在某条依赖边上，而是影响整个项目的解析与注入环境。Hot reloader 对它们的处理是完全失效：
+
+- 清掉所有 entrypoint 的 `require.cache`
+- `clearAllModuleContexts()` 清空模块上下文
+- 向浏览器广播 `SERVER_COMPONENT_CHANGES`
+
+这不是实现偷懒，而是语义决定的：`defineEnv`、路径别名、环境变量会改变大量模块的编译结果，任何「只失效一部分」的做法都可能留下新旧混合的图。与其猜哪条边受影响，不如整体作废。
+
+## ⑤ 失效还要传进数据缓存：`hmrHash`
+
+构建图的失效只解决「模块要不要重编」，`'use cache'` 的数据缓存还需要另一个信号：
+
+```js title="next/dist/server/dev/hot-reloader-turbopack.js（HMR 代际哈希）" source="next/dist/server/dev/hot-reloader-turbopack.js#L1293-L1301"
+```
+
+注释把边界写得很清楚：
+
+- **只有真正的重编译会推进 `hmrHash`**；页面 reload 与配置失效都不推进，所以同一个版本内多次请求拿到的值稳定
+- **未编辑时也返回 `"0"`**，而不是 `null`。这样 `'use cache'` 的键在任何请求里都带着一个稳定分量，不会出现「首编辑前后键结构不同」的情况
+- **它最终进入 `use cache` 的键**：请求元数据里的 `hmrRefreshHash` 会被拼进缓存键，因此编辑代码后旧条目自然不再命中
+
+还有一个容易忽略的接线：app route 在 Dev 下的 HMR 订阅主要目的不是刷新浏览器，而是**推进这个哈希**。路由处理函数没有可重取的 RSC，订阅只为了让它的 `'use cache'` 条目在编辑后失效。
+
+## ⑥ 收益、代价与边界
+
+- **收益**：CI 重复构建可以复用磁盘缓存；Dev 长会话靠内存回收与增量应用把内存压住；构建图与数据缓存各自有明确的失效信号，不靠「全量重启解决一切」
+- **代价**：缓存目录会增长，依赖压缩与回收；不可变文件换来无锁读取，也换来磁盘占用；配置类变更只能全量失效，构建会明显变慢
+- **边界**：`next/dist` 能调的只有开关，图的节点、边、命中率都在内核里；持久化缓存是**正确性优先**的——它不会因为「看起来一样」就命中，版本、配置、依赖记录任何一项不匹配都会退化成重编。CI 上共享 `.next/cache` 时，缓存键至少要覆盖 lockfile、Next 版本与会影响构建的环境；不要手工编辑缓存目录，也不要把它当成可提交的产物
+
+```tsx quiz="Turbopack 的持久化缓存为什么把 .sst/.blob/.meta 设计成不可变文件，并用硬链接来种缓存？如果改成原地更新同一个缓存文件，会失去什么？"
+因为不可变文件一旦写完就不再改，多个进程/多个 worktree
+可以安全地共享同一个 inode，不需要读写锁；
+崩溃或中断也不会留下「写了一半」的可读状态。
+
+改成原地更新后，读者可能看到半写文件，
+种缓存也无法安全硬链接，只能复制或加锁；
+删除、压缩、版本升级都要额外协调，复杂度会回到缓存本身。
+```
+
+## 与章节的对应
+
+本篇对应第 13 章的三节：[13.1 基础认知](/chapters/13-testing-deployment/basics)交代测试与构建的分层，[13.3 实践篇](/chapters/13-testing-deployment/practice)关心一次合并如何带上可验证的产物，[13.4 原理篇](/chapters/13-testing-deployment/internals)则把请求链路放回部署环境里看。构建耗时与内存的另一侧优化，见[12.2 进阶理解](/chapters/12-performance/advanced)。
+
+## 小结
+
+- Next 编排层只决定开关：持久化缓存、依赖追踪、内存回收、压缩跳过与 worktree 种子，图本身在 Turbopack 内核
+- 种子缓存按版本目录隔离，且只写进空目录；临时目录 + rename 保证不会读到半份缓存
+- `.sst`/`.blob`/`.meta`/`.del` 是不可变文件，硬链接共享；`CURRENT`/`LOG` 才复制
+- Dev 的增量有 `partial` 与 `restart` 两条路，apply 失败一律回退到全量重求值
+- 配置类变更没有增量路径，必须清模块缓存、清模块上下文并通知浏览器
+- `hmrHash` 只在真正重编译时推进，并进入 `'use cache'` 的键；构建图缓存与数据缓存是两套失效机制
+
+## 源码深潜：use cache 的运行时包装与缓存条目
+
+## 从一个指令说起
+
+进阶篇里我用「缓存篇」的心智模型理解 `'use cache'`：把一个读取包成可复用的产物。但**为什么**一个指令就能让服务端跳过重复计算？答案在 `next/dist/server/use-cache/` 这几个文件里。本篇不写类比，直接读真实产物——片段都来自你本地已安装的 `next` 包，行号可核对。
+
+::: info 阅读方式
+下面带 `source` 的代码块，左侧是**注释版摘要**，展开「查看源码」可看到 `node_modules/next/dist/...` 的**原文与行号**，二者一一对应。
+:::
+
+## 编译期：指令变成了调用
+
+`'use cache'` 不是运行时扫描字符串得到的魔法。构建阶段，编译器把带该指令的函数改写为对 `cache(...)` 的一次调用，而这个导出就来自本文主角模块的顶端：
+
+```text title="server/use-cache/use-cache-wrapper.js（导出结构）"
+Object.defineProperty(exports, "cache", { get: () => cache });
+```
+
+也就是你在源码里写：
+
+```ts title="app/blog/[slug]/page.tsx"
+'use cache';
+
+export default async function Page({ params }) {
+  const { slug } = await params;
+  return <Article slug={slug} />;
+}
+```
+
+编译后大致等价于把函数体交给 `cache()` 托管：
+
+```ts title="编译后（示意）"
+const Page = cache('default', 'page:<hash>', 0, async function Page(args) { ... }, args);
+```
+
+## 入口：先校验两个 store
+
+真正的 `cache` 函数第一件事不是查缓存，而是确认自己**跑在 App Router 的环境里**——它依赖两个 AsyncLocalStorage 提供的 store。
+
+```ts title="cache() 的入口校验（摘要）"
+const workStore = workAsyncStorage.getStore();          // 请求级：路由、渲染阶段、fetch 配置
+if (workStore === undefined) throw new Error('"use cache" cannot be used outside of App Router');
+
+const workUnitStore = workUnitAsyncStorage.getStore();  // 工作单元级：prerender / request / cache
+if (workUnitStore === undefined) throw new InvariantError('Expected a WorkUnitStore');
+```
+
+```ts source="next/dist/server/use-cache/use-cache-wrapper.js#L1050-L1068" title="真实源码：cache() 开场"
+```
+
+::: warn 关键点
+`workStore` 与 `workUnitStore` 的分工是理解整套缓存机制的钥匙：前者描述「这是哪条路由、处于哪个渲染阶段」，后者描述「当前这段工作在什么语义下执行（预渲染？请求？缓存填充？）」。很多「缓存不生效」的报错，本质是这两个 store 的组合与预期不符。
+:::
+
+## 缓存条目：在惰性求值里生成
+
+未命中时由 `generateCacheEntryImpl` 真正调用被包装的函数。注意它并非立刻执行——先记下开始时间，再把函数交给一个惰性结果：
+
+```ts title="generateCacheEntryImpl 的两行关键（摘要）"
+const startTime = performance.timeOrigin + performance.now(); // 供 TTL / revalidate 计算
+const resultPromise = createLazyResult(fn.bind(null, ...args)); // 推迟到 React 真正 await 时才跑
+```
+
+```ts source="next/dist/server/use-cache/use-cache-wrapper.js#L766-L772" title="真实源码：惰性结果"
+```
+
+::: tip 为什么要「惰性」
+推迟执行是为了让 React 的 request store（同样是 ALS）在被包装函数**真正跑起来**时已经就位——这样函数内部的 `cacheTag()`、`cookies()` 才能读到正确上下文，日志也能被捕获后重放。
+:::
+
+## 标签：cacheTag 只是挂到当前 store
+
+`revalidateTag` 的另一半是 `cacheTag`。看实现会发现「标签」并不神秘——它就是把字符串追加到当前工作单元的 store 上：
+
+```text title="语义（摘要）"
+validateTags(tags)             // 校验标签合法（长度、字符集）
+workUnitStore.tags ??= validTags
+workUnitStore.tags.push(...)   // 累积到当前工作单元
+```
+
+```ts source="next/dist/server/use-cache/cache-tag.js#L44-L49" title="真实源码：cacheTag 写入 tags"
+```
+
+因此「写入时 `revalidateTag('users')`、读取时 `cacheTag('users')`」只有在**同一 workUnitStore 语义下**才成立：标签绑定的是「这次缓存填充记录」，而不是一张全局注册表。
+
+```tsx quiz="同一个 'use cache' 函数里连续调用 cacheTag('a') 与 cacheTag('b')，第二次调用会发生什么？"
+会把 b 追加进同一个 workUnitStore.tags 数组，而不是覆盖。
+
+源码用 `if (!workUnitStore.tags) workUnitStore.tags = validTags; else workUnitStore.tags.push(...validTags)`：
+第一次是赋值，之后都是 push——所以标签是「累积」语义。
+```
+
+## private cache 与 Resume Data Cache
+
+同一份 `cache()` 还要区分公开与私有：入口处 `isPrivate = kind === 'private'` 决定缓存去向。私有缓存（例如依赖会话的读取）通常不进 cache handler，而是落到 **Resume Data Cache（RDC）**，随渲染结果被序列化——这正是它不该被打上公共缓存的原因。
+
+```text title="两种去向往哪走（摘要）"
+kind === 'private'  → Resume Data Cache（随渲染结果序列化）；开发期另有内置内存处理器
+kind === 'remote'   → 走 cache handler（可替换为 Redis / 文件等）
+```
+
+## 对照我们手写的 mini-cache
+
+原理篇手写的 [mini-cache 分层实验](/labs/mini-cache) 用的是「Map + tags 索引 + expireTag」；真实实现多出来的是下面这些：
+
+| 关注点 | mini-cache（手写） | next 的 use-cache |
+| --- | --- | --- |
+| 键 | 参数拼接字符串 | `id` + 序列化参数 |
+| 参数传输 | 直接传对象 | 经 React Flight 编解码 |
+| 失效 | `expireTag` 清索引 | `cacheTag` 登记 → `revalidateTag` 触发再生成 |
+| 私有 | 未区分 | RDC / private handler 分流 |
+| 求值 | 立即执行 | 惰性（`createLazyResult`） |
+
+想动手体会「写入与失效必须成对」，可以重做 [mini-cache 分层实验](/labs/mini-cache)：先让骨架校验失败，再补全 `expireTag`。
+
+## 小结
+
+- 指令的落地：`'use cache'` 编译为对 `cache(kind, id, boundArgsLength, fn, args)` 的调用。
+- 两个 store：`workStore` 管路由与渲染阶段，`workUnitStore` 管当前工作语义，缓存读写都挂在后者上。
+- 缓存条目惰性生成：先记 `startTime`，再用 `createLazyResult` 推迟执行，等 React await 时才真正跑。
+- 标签只是 store 上的字符串累积：`cacheTag` 登记、`revalidateTag` 触发，二者必须落在同一语义下。
+
+读懂了包装层，下一篇换个方向：看这些缓存条目最终如何被**序列化成 Flight 流**发给浏览器——见 [源码深潜：服务端渲染的 Flight 流生成链](/deep-dives/flight-stream)。
+
+# 漫画讲稿（辅助解释）
+
+# EP.01 认识 Next.js 16.3
+
+> 对应正文：[第 1 章 · 认识 Next.js 16.3](../chapters/01-introduction/basics) · 配套实验：[labs/hello-next](../labs/hello-next)
+
+## 剧情回顾
+
+- **第 1 格**：标签君发现页面在浏览器、数据在另一台服务器，首屏还要自己拼 SSR——两套仓库、两条发布线。
+- **第 2 格**：码叔画出 Next.js 的答案——`app/` 文件即路由，RSC 直出 HTML，写操作才需要端点。
+- **第 3 格**：像素酱翻开 16.3 配置：`cacheComponents`、`partialPrefetching`、Turbopack 默认与 `proxy.ts`。
+- **第 4 格**：码叔结案——先画清服务端/客户端边界，再谈缓存与性能。
+
+## 知识点拆解
+
+### 第 1 格 · 三种渲染先分清
+
+SSR 是请求时服务端生成 HTML，SSG 是构建时生成，CSR 是浏览器拿到 JS 后才渲染。Next.js 允许按路由选择，而不是全站一刀切。
+
+- App Router 的服务端组件默认直出 HTML，零客户端 JS
+- 客户端组件同样会被 SSR 成 HTML，再水合事件处理器
+
+```tsx
+// 传统：SPA + 独立后端
+fetch('/api/posts')   // 至少一跳
+首屏空白，SEO 靠补渲染
+两个仓库 · 两条发布线
+```
+
+### 第 2 格 · 一个仓库、一次部署
+
+传统 SPA 要先设计并长期维护 API 契约；Next.js 中服务端组件可以直接查库，只有对外能力才写 Route Handler。
+
+- **app/ 文件**：文件即路由，page 才成为 URL
+- **RSC 直出**：服务端组件查库，零客户端 JS
+- **Action / API**：写操作与对外能力才写端点
+
+- 少掉前端 fetch 自家接口的一跳
+- 但鉴权不能只靠 proxy，必须落到每个 Action / Handler / DAL
+
+### 第 3 格 · 16.3 的四个关键词
+
+- Instant Navigations：`cacheComponents` + `partialPrefetching`
+- Turbopack：dev 内存回收，build 磁盘缓存默认开启
+- SSR 改用 Node 原生流，Edge Runtime 废弃
+- `middleware.ts` 迁移为 `proxy.ts`（Node 运行时）
+
+```tsx
+// next.config.ts
+cacheComponents: true
+partialPrefetching: true
+// Turbopack 默认 · proxy.ts 取代 middleware
+// params / cookies() 全部 await
+```
+
+### 第 4 格 · 升级检查表
+
+- `params`、`searchParams`、`cookies()`、`headers()` 全部 await
+- `experimental.ppr` 改为 `cacheComponents`
+- 缓存默认动态，需要时显式写 `'use cache'`
+
+> ⚠️ 把密钥 / 数据库代码写进客户端组件
+> ⚠️ 升级 16 后忘记 await params、cookies
+> ⚠️ 以为全站必须 SSR 或必须静态
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/hello-next](../labs/hello-next) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 把 Next.js 当成“带路由的 React”，忽略服务端边界。
+2. 在客户端组件里读 `process.env` 密钥或直接访问数据库。
+3. 升级 16.3 后仍按旧写法同步读取 `params` 与 `cookies()`。
+
+## 自测 3 题（含答案）
+
+1. 服务端组件和客户端组件，谁会被 SSR 成 HTML？——**两者都会；区别是服务端组件不向浏览器发送组件 JS，客户端组件会水合交互。**
+2. 16.3 开启即时导航需要哪两个开关？——**`cacheComponents: true` 与 `partialPrefetching: true`，后者依赖前者。**
+3. 为什么说 Next.js 不是“完整后端替代品”？——**长任务、队列、独立扩缩容等仍应放在独立服务；Next 更适合 BFF 与 Web 产品主体。**
+
+# EP.02 路由与导航
+
+> 对应正文：[第 2 章 · 路由与导航](../chapters/02-routing/basics) · 配套实验：[labs/routing-nested](../labs/routing-nested) · 源码深潜：[router-prefetch](../deep-dives/router-prefetch)
+
+## 剧情回顾
+
+- **第 1 格**：标签君受够了手写路由表——布局一切换，客户端状态就丢。
+- **第 2 格**：码叔指出 `app/` 目录本身就是路由：`page` 产 URL，`layout` 保状态，`template` 每次重挂载。
+- **第 3 格**：像素酱实证路由组、并行路由与拦截路由：URL 与布局可以解耦。
+- **第 4 格**：码叔提醒三个高频坑：`page` 之外不产 URL、并行路由缺 `default.tsx`、软导航与刷新行为不同。
+
+## 知识点拆解
+
+### 第 1 格 · page、layout、template
+
+只有 `page.tsx` 会成为可访问 URL 的叶子；`layout.tsx` 包裹子段且导航时不重渲染，`template.tsx` 结构相同但每次导航重新挂载。
+
+- 需要保留搜索框、侧边栏状态 → layout
+- 需要每次进入重置的表单或动画 → template
+
+```tsx
+// 传统：手写路由表
+router.get('/blog/:slug', handler)
+// 切换页面 → layout 卸载
+// 404、嵌套布局都要自己兜底
+```
+
+### 第 2 格 · 动态段与路由组
+
+- **page.tsx**：路由叶子，只有它产生 URL
+- **layout.tsx**：共享外壳，导航时不重渲染
+- **template.tsx**：每次进入都重新挂载
+
+- `[slug]` 单段、`[...slug]` 捕获全部、`[[...slug]]` 可选捕获
+- `(group)` 只影响布局分组，不出现在 URL 中
+- `_folder` 是私有目录，不参与路由
+
+### 第 3 格 · 并行与拦截路由
+
+`@slot` 让同一布局并行渲染多个区域，每个 slot 需要 `default.tsx` 兜底；`(.)`、`(..)`、`(...)` 分别拦截同级、上一级与根级路由。
+
+- 软导航时展示弹层或局部区域
+- 直接刷新或分享链接时回退到完整页面
+
+```tsx
+app/(marketing)/page.tsx      // URL 仍是 /
+app/@modal/(.)photo/[id]/page.tsx
+// 软导航弹层，刷新回到整页
+const { slug } = await params  // 16：Promise
+```
+
+### 第 4 格 · Link 与预取
+
+`<Link>` 提供客户端跳转与视口内预取。16.3 开启 `partialPrefetching` 后，默认只预取共享 App Shell，再由 Suspense 流式补入动态区域。
+
+> ⚠️ layout 不会产生 URL，别拿它当页面
+> ⚠️ 并行路由缺少 default.tsx → 404
+> ⚠️ 拦截路由刷新后行为与软导航不同
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/routing-nested](../labs/routing-nested) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 把 `layout.tsx` 当成页面，期待它产生 URL。
+2. 并行路由只写 `@slot/page.tsx`，漏掉 `default.tsx`。
+3. 用 `<a>` 做站内跳转，丢掉客户端导航与预取。
+
+## 自测 3 题（含答案）
+
+1. `layout` 与 `template` 的关键区别？——**导航时 layout 保留实例与状态，template 每次都会重新挂载。**
+2. 路由组 `(marketing)` 会出现在 URL 里吗？——**不会；它只用于组织布局与代码。**
+3. 拦截路由刷新页面后会发生什么？——**直接访问时拦截不生效，回退到目标路由的完整页面。**
+
+# EP.03 服务端组件与客户端组件
+
+> 对应正文：[第 3 章 · 服务端与客户端组件](../chapters/03-components/basics) · 配套实验：[labs/client-interaction](../labs/client-interaction) · 源码深潜：[flight-stream](../deep-dives/flight-stream)
+
+## 剧情回顾
+
+- **第 1 格**：标签君把 `'use client'` 打在根布局上，整棵树进了客户端包，首屏 JS 直接涨 300KB。
+- **第 2 格**：码叔画出边界：服务端组件查库与读密钥，客户端组件管状态与事件，children 可以透传。
+- **第 3 格**：像素酱用组合模式实证：客户端外壳包住服务端内容，服务端部分不变成客户端。
+- **第 4 格**：码叔结案：客户端组件也会 SSR；跨边界 props 必须可序列化。
+
+## 知识点拆解
+
+### 第 1 格 · 默认服务端
+
+App Router 中的组件默认在服务端执行，可以直接 `await db`、使用环境变量与内部服务。代价是不能使用 `useState`、`useEffect`、事件处理器与浏览器 API。
+
+```tsx
+'use client'   // 打在根布局
+↓ 整棵树进入客户端包
+密钥、数据库代码被迫搬走
+首屏 JS +300KB
+```
+
+### 第 2 格 · 'use client' 的边界
+
+指令写在客户端子树的入口文件顶部，该文件及其 import 的模块进入客户端包。它不会让通过 `children` 传入的服务端组件变成客户端。
+
+- **服务端**：查库 / 密钥 / 大段静态内容
+- **客户端**：状态 / 事件 / 浏览器 API
+- **children**：客户端壳可包服务端内容
+
+- 事件、状态、生命周期、localStorage 等 → 客户端
+- 查库、密钥、渲染大段内容 → 服务端
+
+### 第 3 格 · 组合模式
+
+客户端组件可以接收服务端组件作为 `children` 或具名 slot。这样外壳保留交互，内容仍由服务端渲染，避免把整棵数据树拖进客户端。
+
+```tsx
+// page.tsx（服务端）
+<SearchBox>
+  <ProductGrid products={products} />
+</SearchBox>
+// SearchBox 是客户端，children 仍是服务端
+```
+
+### 第 4 格 · 两次渲染与水合
+
+客户端组件并非只在浏览器渲染：首屏会由服务端产出 HTML，浏览器收到组件代码后再水合事件。客户端导航时才只下发 RSC 负载。
+
+> ⚠️ 客户端组件也会被 SSR 成 HTML
+> ⚠️ props 必须可序列化，函数不能直接传
+> ⚠️ 客户端文件 import 服务端组件 → 全变客户端
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/client-interaction](../labs/client-interaction) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 为了一个交互按钮，把 `'use client'` 写在根布局或页面顶层。
+2. 向客户端组件传递函数、类实例或不可序列化对象。
+3. 在客户端文件里 import 服务端组件，导致整块被拉进客户端包。
+
+## 自测 3 题（含答案）
+
+1. 客户端组件只在浏览器渲染吗？——**不是；首屏会 SSR 成 HTML，浏览器再水合交互。**
+2. 怎样让客户端外壳包住服务端内容？——**通过 `children` 或具名 slot 传入，服务端组件不会变成客户端。**
+3. 服务端组件能使用 useState 吗？——**不能；需要状态或事件时，把交互下沉到客户端叶子。**
+
+# EP.04 数据获取与流式渲染
+
+> 对应正文：[第 4 章 · 数据获取与流式渲染](../chapters/04-data-fetching/basics) · 配套实验：[labs/data-streaming](../labs/data-streaming) · 源码深潜：[flight-stream](../deep-dives/flight-stream)
+
+## 剧情回顾
+
+- **第 1 格**：标签君的两个请求明明互不依赖，却因为顺序 await 串成 2000ms 瀑布。
+- **第 2 格**：码叔给出两条路：并行发请求，以及用 Suspense 先把壳流出去。
+- **第 3 格**：像素酱实证 `Promise.all` 与 Suspense 边界，骨架屏先到、数据后补。
+- **第 4 格**：码叔强调 16.x 的 fetch 默认不缓存，未包边界的动态读取会阻塞整段。
+
+## 知识点拆解
+
+### 第 1 格 · 16.x 的 fetch 语义
+
+默认 `fetch(url)` 不持久化缓存；需要时显式写 `cache: 'force-cache'` 或 `next: { revalidate: 60 }`。ORM 与数据库驱动没有自动缓存，需要 `'use cache'`。
+
+- 开发环境 HMR 会临时记忆 fetch 响应，排查“数据没变”先整页刷新
+- 未完成的请求默认阻塞渲染，不是 bug
+
+```tsx
+const artist = await getArtist()  // 800ms
+const albums = await getAlbums()  // 1200ms
+// 总耗时 2000ms，本可并行
+// 页面整块空白等最慢请求
+```
+
+### 第 2 格 · 并行化
+
+先创建 Promise，再在需要结果时 await。`Promise.all` 适合全部依赖；`Promise.allSettled` 适合允许部分失败的聚合。
+
+- **Promise.all**：无依赖请求同时发出
+- **Suspense**：先给回退 UI，数据到了再替换
+- **loading.tsx**：路由级骨架，自动包住子段
+
+### 第 3 格 · Suspense 与流式
+
+把读取动态输入的组件放进 `<Suspense>`，外层壳会先发送，慢区域随后流式补入。`loading.tsx` 是路由级的自动 Suspense 边界。
+
+```tsx
+const artistP = getArtist(u)
+const albumsP = getAlbums(u)
+const [artist, albums] = await Promise.all([
+  artistP, albumsP
+])
+<Suspense fallback={<Skeleton />}>
+  <Reviews />
+</Suspense>
+```
+
+### 第 4 格 · 客户端取数边界
+
+客户端组件可以用 SWR / React Query 等库做交互后取数，但首屏数据优先在服务端取；否则会把请求瀑布搬到浏览器。
+
+> ⚠️ fetch 默认不持久化缓存（16.x）
+> ⚠️ 未包 Suspense 的动态读取会阻塞整段
+> ⚠️ 无依赖请求却顺序 await，制造瀑布
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/data-streaming](../labs/data-streaming) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 把互不依赖的请求写成连续 `await`，延迟直接相加。
+2. 把动态读取放在没有 Suspense 的外壳路径上。
+3. 沿用 15.x 的“fetch 默认缓存”心智，误判数据新鲜度。
+
+## 自测 3 题（含答案）
+
+1. 两个无依赖请求怎样并行？——**先创建 Promise，再用 `Promise.all` 统一 await。**
+2. Suspense 在流式渲染里做什么？——**先发送回退 UI，慢数据完成后流式替换该区域。**
+3. 16.x 中 `fetch(url)` 默认缓存吗？——**不缓存；需要显式配置 `force-cache` 或 `revalidate`。**
+
+# EP.05 缓存与重新验证
+
+> 对应正文：[第 5 章 · 缓存与重新验证](../chapters/05-caching/basics) · 配套实验：[labs/mini-cache](../labs/mini-cache) · 源码深潜：[cache-layers](../deep-dives/cache-layers)
+
+## 剧情回顾
+
+- **第 1 格**：标签君发现 16.x 默认动态，缓存必须明写，可寿命与失效又该怎么管？
+- **第 2 格**：码叔拆出三件套：`'use cache'`、`cacheLife`、`cacheTag`。
+- **第 3 格**：像素酱实证数据函数缓存与写后 `updateTag` 失效。
+- **第 4 格**：码叔提醒：忘记开 `cacheComponents`、不写寿命、拿用户输入当键都会出事。
+
+## 知识点拆解
+
+### 第 1 格 · 动态默认与 cacheComponents
+
+16.x 翻转了缓存模型：数据读取默认在请求时执行，缓存是显式动作。开启 `cacheComponents: true` 后，`'use cache'`、`cacheLife`、`cacheTag` 才生效。
+
+- 构建期会校验无法预渲染的访问
+- 未包 Suspense 的动态读取会得到可操作的修复提示
+
+```tsx
+fetch(url)                       // 不缓存
+fetch(url, { cache: 'force-cache' })
+// 16：动态是默认，缓存要显式
+// 寿命、失效、标签靠什么管？
+```
+
+### 第 2 格 · 两种缓存粒度
+
+- **'use cache'**：缓存函数返回值或整段组件输出
+- **cacheLife**：stale / revalidate / expire 三档时间
+- **cacheTag**：挂标签，写后按标签精准失效
+
+- 异步函数顶部：缓存返回值，适合数据库查询与聚合
+- 异步组件顶部：缓存整段 RSC 输出，适合稳定 UI 块
+- 文件顶部：该文件所有导出都被缓存，只适合纯数据模块
+
+### 第 3 格 · cacheLife 与 cacheTag
+
+`cacheLife` 有 `seconds`、`minutes`、`hours`、`days`、`weeks`、`max`、`default` 七档。`cacheTag` 挂逻辑标签，写操作后按标签失效。
+
+- 选档依据是内容变化频率，不是页面重要性
+- 不写 cacheLife 会套用隐式 default，读代码时看不出寿命
+
+```tsx
+export async function getProducts() {
+  'use cache'
+  cacheLife('hours')
+  cacheTag('products')
+  return db.product.findMany()
+}
+// 写后：updateTag('products')
+```
+
+### 第 4 格 · 失效与私有缓存
+
+写后可用 `updateTag` / `revalidateTag` 精准失效；用户私有数据应使用私有缓存或流式，而不是进入跨用户共享缓存。
+
+> ⚠️ 忘记开 cacheComponents → 'use cache' 不生效
+> ⚠️ 每个 use cache 都应显式 cacheLife
+> ⚠️ 用用户输入做公共缓存键，导致跨用户泄漏
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/mini-cache](../labs/mini-cache) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 没开 `cacheComponents` 就写 `'use cache'`，以为已缓存。
+2. 所有缓存都不写 `cacheLife`，嵌套时寿命互相影响。
+3. 把搜索词、用户 ID 之类输入塞进公共缓存键。
+
+## 自测 3 题（含答案）
+
+1. 16.x 默认缓存数据吗？——**不缓存；动态是默认，缓存需要显式 `'use cache'` 或 fetch 缓存配置。**
+2. cacheLife 的档位按什么选？——**按内容变化频率选，例如实时股价 seconds、博客 days。**
+3. 写操作后如何让商品列表立即更新？——**给缓存挂 `cacheTag('products')`，写后调用 `updateTag('products')`。**
+
+# EP.06 Instant Navigations 即时导航
+
+> 对应正文：[第 6 章 · Instant Navigations](../chapters/06-instant-navigation/basics) · 配套实验：[labs/debug-instant-degradation](../labs/debug-instant-degradation) · 源码深潜：[router-prefetch](../deep-dives/router-prefetch)
+
+## 剧情回顾
+
+- **第 1 格**：标签君点击链接后只能等 RSC 请求，服务端慢查询决定了白屏时长。
+- **第 2 格**：码叔亮出两个开关与每个 await 的三选一：Stream、Cache、Block。
+- **第 3 格**：像素酱实证配置与 Suspense 边界，并说明整段阻塞的 `instant = false`。
+- **第 4 格**：码叔提醒冷缓存、依赖关系与 Instant Insights 的硬约束。
+
+## 知识点拆解
+
+### 第 1 格 · 即时导航的定义
+
+用户点击的那一刻，浏览器就开始渲染新页面：静态内容、缓存内容与回退 UI 立刻出现，剩余内容由服务器流式补入。前提是缓存已预热。
+
+```tsx
+click → RSC 请求 → 服务端渲染
+→ 慢查询 → 响应返回 → 切页
+// 用户盯着旧页面或白屏
+// 等待时长 = 最慢的那个请求
+```
+
+### 第 2 格 · 两个配置开关
+
+- **cacheComponents**：页面拆成静态外壳 + 动态区域
+- **partialPrefetching**：预取共享 App Shell，而非整页
+- **Stream / Cache / Block**：流式、缓存，或显式放弃即时
+
+- `cacheComponents: true`：启用 Cache Components 模型
+- `partialPrefetching: true`：`<Link>` 只预取共享 App Shell
+- 两者有依赖关系，后者必须在前者开启后工作
+
+### 第 3 格 · Stream / Cache / Block
+
+预渲染沿组件树遇到需要等待的 await 时，只能三选一：放进 Suspense 流式、用 `'use cache'` 缓存，或导出 `instant = false` 显式阻塞。
+
+- Stream：每次都要新鲜的数据
+- Cache：变化不频繁、可接受陈旧窗口的数据
+- Block：暂时无法改造、必须同步就绪的段
+
+```tsx
+// next.config.ts
+cacheComponents: true
+partialPrefetching: true
+// 库存：每次请求新鲜
+<Suspense fallback={<Skeleton />}>
+  <Inventory params={params} />
+</Suspense>
+```
+
+### 第 4 格 · Instant Insights 与 instant()
+
+开发期，不够即时的导航会被上报为带修复菜单的错误；`@next/playwright` 的 `instant()` 把同一约束搬进 CI，防止即时性退化。
+
+> ⚠️ 冷缓存首次导航不可能即时
+> ⚠️ 只开 partialPrefetching 不生效
+> ⚠️ 未缓存 await 未包 Suspense → Instant Insights 报错
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/debug-instant-degradation](../labs/debug-instant-degradation) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 以为冷缓存首次访问也能做到零等待。
+2. 只开 `partialPrefetching`，忘记 `cacheComponents`。
+3. 把慢查询留在外壳路径上，且不包 Suspense。
+
+## 自测 3 题（含答案）
+
+1. 即时导航的两个开关是什么？——**`cacheComponents` 与 `partialPrefetching`，后者依赖前者。**
+2. 一个 await 有哪三种合法处理方式？——**Stream（Suspense 流式）、Cache（'use cache'）、Block（instant = false）。**
+3. 冷缓存第一次导航为什么可能仍要等？——**缓存尚未预热，服务器仍需计算一次。**
+
+# EP.07 Server Actions 与表单变更
+
+> 对应正文：[第 7 章 · Server Actions](../chapters/07-server-actions/basics) · 配套实验：[labs/server-action-todo](../labs/server-action-todo) · 源码深潜：[action-handler](../deep-dives/action-handler)
+
+## 剧情回顾
+
+- **第 1 格**：标签君一个表单写了接口、校验、loading、错误、刷新四份代码。
+- **第 2 格**：码叔用 `'use server'` 把链路收成一个异步函数，表单可直接绑定。
+- **第 3 格**：像素酱实证 `useActionState` 的三态与 `useOptimistic` 的乐观更新。
+- **第 4 格**：码叔强调 Action 是公开 POST 端点，鉴权与回滚都不能省。
+
+## 知识点拆解
+
+### 第 1 格 · 定义与调用
+
+`'use server'` 可标在文件顶部（所有导出都是 Server Function），也可标在单个异步函数内。底层使用 HTTP POST，客户端组件只能导入模块级 Action。
+
+- 服务端组件表单：`<form action={fn}>`
+- 客户端表单：导入 Action，配合 `useActionState`
+- 事件触发：在 `startTransition` 中调用
+
+```tsx
+onSubmit → fetch('/api/todo')
+手写校验 / loading / 错误 / 刷新
+接口 + 客户端状态 + 重新取数
+一个表单四份代码
+```
+
+### 第 2 格 · 表单三态
+
+`useActionState` 返回 `[state, formAction, pending]`。服务端函数签名变为 `(prevState, formData)`，便于回显校验错误与禁用提交按钮。
+
+- **'use server'**：函数只在服务端执行
+- **<form action>**：无 JS 也能提交，渐进增强
+- **useActionState**：状态 / 包装后的 action / pending
+
+### 第 3 格 · 乐观更新
+
+`useOptimistic` 在请求发出前先更新 UI，失败时由 React 回滚到真实状态。适合点赞、待办勾选等高频轻量操作。
+
+```tsx
+'use server'
+export async function createTodo(prev, formData) {
+  const title = String(formData.get('title'))
+  if (!title) return { error: '标题必填' }
+  await db.todo.create({ data: { title } })
+  revalidatePath('/todos')
+}
+```
+
+### 第 4 格 · 安全边界
+
+- 每个 Action 内部重新校验会话与权限
+- 用 schema 校验输入，不信任 FormData
+- 写后按标签或路径失效，避免陈旧数据
+
+> ⚠️ Action 是公开 POST 端点，必须自行鉴权
+> ⚠️ 参数必须可序列化，不能传函数或类实例
+> ⚠️ 乐观更新失败要回滚，不能假装成功
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/server-action-todo](../labs/server-action-todo) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 把 Action 当成“内部函数”，不在内部做鉴权。
+2. 向 Action 传递不可序列化参数或超大对象。
+3. 乐观更新没有失败回滚，界面与数据库不一致。
+
+## 自测 3 题（含答案）
+
+1. Server Action 底层使用什么 HTTP 方法？——**POST；也只有 POST 能调用。**
+2. useActionState 返回哪三项？——**状态、包装后的 action、pending 布尔值。**
+3. 为什么 Action 内部必须鉴权？——**它是公开可调用的 POST 端点，前端隐藏按钮不等于服务端安全。**
+
+# EP.08 渲染模式与静态生成
+
+> 对应正文：[第 8 章 · 渲染模式与静态生成](../chapters/08-rendering/basics) · 配套实验：[labs/mini-isr](../labs/mini-isr) · 源码深潜：[ppr-postponed-state](../deep-dives/ppr-postponed-state)
+
+## 剧情回顾
+
+- **第 1 格**：标签君用 `force-dynamic` 一刀切，结果要么内容旧，要么每次都慢。
+- **第 2 格**：码叔分清 SSG、SSR、ISR：动态输入决定路由是否在请求期执行。
+- **第 3 格**：像素酱实证 `generateStaticParams`、`revalidate` 与按需再生。
+- **第 4 格**：码叔提醒 16 的 params 是 Promise，async 页面不等于动态。
+
+## 知识点拆解
+
+### 第 1 格 · 动态输入清单
+
+未启用 Cache Components 时，组件链上访问 `cookies()`、`headers()`、`searchParams`、未预渲染的 `params`，或显式 `force-dynamic`，都会让路由在请求期渲染。
+
+```tsx
+博客想静态：CDN 快、成本低
+库存想动态：每次都要新鲜
+export const dynamic = 'force-dynamic'
+// 结果：要么旧，要么慢
+```
+
+### 第 2 格 · generateStaticParams
+
+返回数组，每项是一组 params。返回的路径在构建期生成静态 HTML；没返回的路径默认首次请求按需生成，之后同样缓存。
+
+- **SSG**：构建期生成，内容稳定
+- **SSR**：每请求执行，依赖 cookies / headers
+- **ISR**：静态服务 + 后台再生
+
+- 嵌套动态段的内层会收到外层已解析的 params
+- 数据不存在时在组件内调用 `notFound()`
+
+### 第 3 格 · ISR
+
+`export const revalidate = 60` 让静态页面在后台按秒再生：先返回旧内容，再异步刷新。经典模型下与 Cache Components 的 `cacheLife` 并存，迁移时逐段替换。
+
+```tsx
+export async function generateStaticParams() {
+  return posts.map(p => ({ slug: p.slug }))
+}
+export const revalidate = 60
+// 未返回的路径：首次请求按需生成
+const { slug } = await params
+```
+
+### 第 4 格 · PPR 与软动态
+
+16.3 用 Cache Components 表达部分预渲染：静态外壳先出，动态区域在 Suspense 边界内流式补入。无法预渲染的访问必须显式缓存或流式。
+
+> ⚠️ params / searchParams / cookies 在 16 都是 Promise
+> ⚠️ generateStaticParams 返回的是 params 数组
+> ⚠️ 以为 async 页面一定动态——await 纯函数不会
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/mini-isr](../labs/mini-isr) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 同步读取 `params` / `searchParams`，升级 16 后直接报错。
+2. 以为页面写了 `async` 就一定动态渲染。
+3. 对每个页面都 `force-dynamic`，放弃 CDN 与静态优化。
+
+## 自测 3 题（含答案）
+
+1. 哪些输入会让路由变动态？——**cookies、headers、searchParams、未预渲染的 params，或显式 force-dynamic。**
+2. generateStaticParams 返回什么？——**一个 params 对象数组，每个对象对应一条要预渲染的路径。**
+3. ISR 的 revalidate = 60 是什么行为？——**静态服务，超过 60 秒后的首个请求触发后台再生。**
+
+# EP.09 Route Handlers 与 proxy.ts
+
+> 对应正文：[第 9 章 · Route Handlers 与 proxy.ts](../chapters/09-route-handlers/basics) · 配套实验：[labs/route-handlers-proxy](../labs/route-handlers-proxy)
+
+## 剧情回顾
+
+- **第 1 格**：标签君把旧 API 迁进 `app/`，又发现 middleware 在 Edge 里连不上 Node 库。
+- **第 2 格**：码叔区分 `route.ts` 与 `proxy.ts`：前者是端点，后者是 Node 运行时粗粒度拦截。
+- **第 3 格**：像素酱实证 Webhook 验签必须读原始 body，以及流式响应。
+- **第 4 格**：码叔提醒 body 只能读一次、Route Handler 默认不缓存、proxy 不该查库。
+
+## 知识点拆解
+
+### 第 1 格 · 最小端点
+
+在 `app/` 任意层级放 `route.ts`，导出以 HTTP 方法命名的异步函数。使用标准 `Request` / `Response`，也可用 `NextRequest` / `NextResponse`。未导出的方法自动返回 405。
+
+```tsx
+// pages/api 迁到 app/route.ts
+export async function GET(req) { ... }
+// middleware.ts 在 Edge，连不上 Node 库
+// Webhook 需要原始 body 验签
+```
+
+### 第 2 格 · 动态参数与查询
+
+第二个参数 `ctx` 提供 `params`，16 中同样是 Promise。查询字符串用 `new URL(request.url).searchParams` 读取，无需额外 API。
+
+- **route.ts**：GET/POST/PUT... 标准 Web API
+- **405**：未导出的方法自动拒绝
+- **proxy.ts**：Node 运行时，可做重写与跳转
+
+### 第 3 格 · Webhook 与流式
+
+- 验签必须使用原始 body 文本，先 `text()` 再 `JSON.parse`
+- 返回 `ReadableStream` 即可实现 SSE / LLM 流式输出
+- CORS 需要显式处理 `OPTIONS` 与响应头
+
+```tsx
+export async function POST(req: NextRequest) {
+  const raw = await req.text()
+  verifySignature(raw, req.headers)
+  const body = JSON.parse(raw)
+  return Response.json({ ok: true }, { status: 201 })
+}
+// proxy.ts 只做语言协商 / 租户路径粗筛
+```
+
+### 第 4 格 · proxy.ts 迁移
+
+16.3 中 `middleware.ts` 迁移为 `proxy.ts`，运行在 Node 运行时。适合语言协商、租户路径粗筛、重写与跳转；不应在其中做数据库查询或重鉴权。
+
+> ⚠️ 读两次 body（json 后再 text）会报错
+> ⚠️ Route Handler 默认不缓存
+> ⚠️ 在 proxy 里做数据库鉴权，慢且不该
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/route-handlers-proxy](../labs/route-handlers-proxy) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 先 `await request.json()` 再 `await request.text()`，请求体已被消费。
+2. 期待 Route Handler 像静态页面一样被缓存。
+3. 把完整鉴权与数据库查询塞进 `proxy.ts`。
+
+## 自测 3 题（含答案）
+
+1. Route Handler 未导出 DELETE 会怎样？——**框架自动返回 405 Method Not Allowed。**
+2. Webhook 为什么要先 text() 再 JSON.parse？——**验签需要原始请求体，json() 会消费并改变格式。**
+3. proxy.ts 适合做什么？——**语言协商、租户路径粗筛、重写与跳转等轻量路由决策。**
+
+# EP.10 样式、静态资源与 Metadata
+
+> 对应正文：[第 10 章 · 样式、资源与 Metadata](../chapters/10-styling-assets/basics) · 配套实验：[labs/styling-assets](../labs/styling-assets)
+
+## 剧情回顾
+
+- **第 1 格**：标签君的样式、字体、图片、meta 各写各的，LCP 与 CLS 一起崩。
+- **第 2 格**：码叔梳理四件事：Tailwind v4、next/font、next/image、Metadata API。
+- **第 3 格**：像素酱实证 CSS 令牌、构建期字体与 metadata / sitemap / OG。
+- **第 4 格**：码叔提醒全局 CSS 边界、图片尺寸与 metadata 覆盖规则。
+
+## 知识点拆解
+
+### 第 1 格 · Tailwind v4
+
+v4 不再需要 `tailwind.config.js` 与三条 `@tailwind` 指令，改用 `@import 'tailwindcss'`，设计令牌写在 `@theme` 中，自动生成 `bg-*`、`text-*` 等实用类。
+
+- PostCSS 只需 `@tailwindcss/postcss`
+- 非模块全局样式只能在 root layout 引入
+
+```tsx
+@tailwind base/components/utilities  // v3
+字体手动 preload，图片直接放大图
+<img> 不写尺寸 → CLS 抖动
+metadata 散落，OG 图缺失
+```
+
+### 第 2 格 · CSS Modules 与 CSS-in-JS
+
+CSS Modules 内置支持，文件名以 `.module.css` 结尾，类名构建期哈希。CSS-in-JS 需要处理 RSC 样式注册，动态主题项目再考虑。
+
+- **Tailwind v4**：CSS 里 @theme 定义设计令牌
+- **next/font**：构建期自托管，零布局偏移
+- **next/image**：尺寸、懒加载、格式优化
+
+### 第 3 格 · 字体与图片
+
+- `next/font` 构建期下载并自托管，自动生成字体子集与尺寸指标
+- `next/image` 需要尺寸或 `fill`，自动懒加载与格式协商
+- 首屏主图可加 `priority`，避免 LCP 被懒加载拖慢
+
+```tsx
+@import 'tailwindcss'
+@theme { --color-brand: #1d6ff2 }
+const geist = Geist({ subsets: ['latin'] })
+<body className={geist.className}>
+export const metadata: Metadata = { title, openGraph }
+// sitemap.ts · robots.ts · opengraph-image.tsx
+```
+
+### 第 4 格 · Metadata 与 SEO
+
+静态页面导出 `metadata`，动态页面用 `generateMetadata`。`sitemap.ts`、`robots.ts`、`opengraph-image.tsx` 用文件约定生成对应资产。
+
+> ⚠️ 全局 CSS 只能在 root layout 引入
+> ⚠️ next/image 必须给 width/height 或 fill
+> ⚠️ metadata 与 generateMetadata 不要重复覆盖
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/styling-assets](../labs/styling-assets) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 在子布局或页面引入非模块全局 CSS，导航后样式残留。
+2. 使用 `next/image` 却不给尺寸，CLS 反而更差。
+3. 同时写 `metadata` 与 `generateMetadata`，后者覆盖前者却不自知。
+
+## 自测 3 题（含答案）
+
+1. Tailwind v4 的设计令牌写在哪？——**CSS 文件的 `@theme` 块中，例如 `--color-brand`。**
+2. next/font 的主要收益？——**构建期自托管字体并生成尺寸指标，减少请求与布局偏移。**
+3. 动态路由怎样生成页面级 metadata？——**导出 `generateMetadata`，基于 params 异步返回。**
+
+# EP.11 认证、授权与安全
+
+> 对应正文：[第 11 章 · 认证、授权与安全](../chapters/11-auth-security/basics) · 配套实验：[labs/debug-auth-bypass](../labs/debug-auth-bypass)
+
+## 剧情回顾
+
+- **第 1 格**：标签君把 JWT 放 localStorage，XSS 一行就能偷走，Action 与 API 还在裸奔。
+- **第 2 格**：码叔拆开认证、会话、授权三层，并给出 Cookie 的四个安全属性。
+- **第 3 格**：像素酱实证 httpOnly 会话与 DAL 查询级授权。
+- **第 4 格**：码叔强调最小载荷、服务端校验与私有缓存。
+
+## 知识点拆解
+
+### 第 1 格 · 三个概念
+
+认证确认身份，会话在请求间记住登录状态，授权决定能做什么。Next.js 不是认证框架，生产建议使用成熟库，但落点仍是 Cookie + DAL + proxy。
+
+```tsx
+localStorage.setItem('token', jwt)
+// XSS 一行就能偷走
+if (!user) redirect('/login')  // 只挡页面
+// Action / route.ts 仍可被直接调用
+```
+
+### 第 2 格 · 会话 Cookie 属性
+
+- **认证**：校验凭证，签发最小会话
+- **会话**：httpOnly / secure / sameSite
+- **授权**：DAL 每个查询都带角色与归属
+
+- `httpOnly`：客户端 JS 读不到，降低 XSS 窃取风险
+- `secure`：仅 HTTPS 发送
+- `sameSite: 'lax'`：挡住大部分 CSRF
+- `expires/maxAge` 与 `path`：限定寿命与作用路径
+
+### 第 3 格 · DAL 授权
+
+数据访问层是最终判定点：每个查询都从会话取 userId / role / tenantId，并写入 where 条件。不要导出可绕过授权的裸查询函数。
+
+```tsx
+import 'server-only'
+const cookieStore = await cookies()
+cookieStore.set('session', jwt, {
+  httpOnly: true, secure: true, sameSite: 'lax'
+})
+// DAL：getCurrentUser() → 角色 → where 条件
+```
+
+### 第 4 格 · 缓存时代的鉴权
+
+公共缓存只能放与用户无关的数据；用户私有内容用私有缓存或 Suspense 流式。CSP、输入校验与最小权限同样是上线清单的一部分。
+
+> ⚠️ Cookie 里放手机号 / 邮箱 / 密码
+> ⚠️ 只在前端隐藏按钮，服务端不校验
+> ⚠️ 用户私有数据未用 private 缓存或流式
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/debug-auth-bypass](../labs/debug-auth-bypass) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 把会话 JWT 放进 localStorage，暴露给任意脚本。
+2. 只在页面做 `redirect`，忘记在每个 Action 与 Handler 内校验。
+3. 把用户私有数据写进跨用户共享缓存。
+
+## 自测 3 题（含答案）
+
+1. 会话 Cookie 最重要的三个属性？——**httpOnly、secure、sameSite。**
+2. 为什么授权要放在 DAL？——**所有数据访问都经过 DAL，能保证每个查询都带用户与角色条件。**
+3. 用户私有数据能用公共 'use cache' 吗？——**不能；应使用私有缓存或流式，避免跨用户泄漏。**
+
+# EP.12 性能优化体系
+
+> 对应正文：[第 12 章 · 性能优化体系](../chapters/12-performance/basics) · 配套实验：[labs/observe-pipeline](../labs/observe-pipeline)
+
+## 剧情回顾
+
+- **第 1 格**：标签君凭感觉上 memo，bundle 没降、LCP 没变，也没有基线。
+- **第 2 格**：码叔坚持度量先行：LCP / INP / CLS，实验室回归 + 字段决策。
+- **第 3 格**：像素酱实证 Web Vitals 上报与分层定位：TTFB 找服务端，INP 找客户端。
+- **第 4 格**：码叔提醒 Compiler 不减少 bundle，别乱拆包，也别只看 Lighthouse。
+
+## 知识点拆解
+
+### 第 1 格 · 三个核心指标
+
+LCP 衡量首屏主内容出现时间，INP 衡量交互响应，CLS 衡量布局偏移。TTFB 与 FCP 是辅助指标，用来判断瓶颈在服务端还是客户端。
+
+- 实验室数据用于本地回归
+- 字段数据用于真实决策
+
+```tsx
+// 先上 useMemo / React.memo
+bundle 没降，LCP 没变
+// 不知道慢在服务端还是客户端
+// 没有基线，无法判断是否回归
+```
+
+### 第 2 格 · React Compiler 与 Turbopack
+
+React Compiler 自动插入记忆化，减少引用变化导致的重渲染；它不修复 O(n²) 计算，也不减少 bundle。Turbopack 在 16.3 默认开启内存回收与 build 磁盘缓存。
+
+- **LCP**：首屏主内容：服务端、图片、字体
+- **INP**：交互跟手：JS 体积、长任务
+- **CLS**：布局稳定：尺寸预留、字体切换
+
+- 历史项目可用注解模式逐组件灰度
+- CI 缓存 `.next/cache` 才能吃到重复构建收益
+
+### 第 3 格 · Bundle 与预取
+
+- 大依赖用 `next/dynamic` 延迟加载，但避免拆得过碎
+- 图片、字体、首屏脚本优先于“全面懒加载”
+- `partialPrefetching` 减少无效整页预取
+
+```tsx
+'use client'
+import { useReportWebVitals } from 'next/web-vitals'
+useReportWebVitals(m => sendBeacon('/vitals', m))
+// 先定位层：TTFB → 服务端；INP → 客户端
+// 再动 bundle / 图片 / 字体 / 预取
+```
+
+### 第 4 格 · 优化闭环
+
+建立基线 → 定位层（服务端/客户端/网络）→ 单点改动 → 回归同一指标。没有基线的“优化”无法证明有效，也无法防止退化。
+
+> ⚠️ 开 Compiler 后立刻删掉所有手写 memo
+> ⚠️ 只看 Lighthouse，不看真实用户字段数据
+> ⚠️ dynamic import 拆得太碎，请求数反而增加
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/observe-pipeline](../labs/observe-pipeline) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 把 React Compiler 当成 bundle 优化工具。
+2. 只用实验室分数决策，忽略中端机与弱网字段数据。
+3. 为了“按需加载”把页面拆成大量小 chunk，请求数反增。
+
+## 自测 3 题（含答案）
+
+1. LCP、INP、CLS 分别衡量什么？——**首屏主内容出现、交互响应、布局偏移。**
+2. TTFB 差应该先查哪一层？——**服务端：取数、渲染或基础设施，而不是客户端 bundle。**
+3. React Compiler 能减少 bundle 吗？——**不能；它优化重渲染，不改变包体积。**
+
+# EP.13 测试、可观测与部署
+
+> 对应正文：[第 13 章 · 测试、可观测与部署](../chapters/13-testing-deployment/basics) · 配套实验：[labs/observe-pipeline](../labs/observe-pipeline)
+
+## 剧情回顾
+
+- **第 1 格**：标签君的 async 服务端组件在 Vitest 里跑不起来，E2E 又跑在 dev server 上。
+- **第 2 格**：码叔给出测试金字塔：Vitest 测纯逻辑与同步组件，Playwright 测生产构建的关键路径。
+- **第 3 格**：像素酱实证 `instant()` 断言、OTel 与上线检查。
+- **第 4 格**：码叔提醒别硬渲染 async RSC、E2E 要跑 build 产物、CI 要缓存 `.next/cache`。
+
+## 知识点拆解
+
+### 第 1 格 · 测试金字塔
+
+- 单元：Vitest 测纯函数、校验、工具方法
+- 组件：Vitest + Testing Library 测同步客户端组件
+- E2E：Playwright 覆盖关键路径
+
+```tsx
+async RSC 在 Vitest 里渲染失败
+E2E 跑 dev server，行为不接近线上
+上线才发现即时导航退化
+没有 OTel，排障只能靠猜
+```
+
+### 第 2 格 · async 服务端组件
+
+Vitest 目前不支持直接渲染 async 服务端组件。把取数、鉴权、格式化抽成纯函数做单测，整页行为交给 E2E。
+
+- **Vitest**：纯函数、schema、同步客户端组件
+- **Playwright**：生产构建上的关键用户路径
+- **instant()**：CI 中防止即时导航退化
+
+### 第 3 格 · 即时导航断言与可观测
+
+`@next/playwright` 的 `instant()` 断言把即时性约束搬进 CI。OTel 与结构化错误上报让线上排障从“猜”变成“查”。
+
+```tsx
+test('导航即时', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('link', { name: 'About' }).click()
+  await expect(page).toHaveURL('/about')
+  await instant(page)  // @next/playwright
+})
+```
+
+### 第 4 格 · 部署检查
+
+- E2E 的 `webServer` 用 `build && start`
+- CI 缓存 `.next/cache` 加速重复构建
+- 自托管注意 Node 版本、环境变量与流式响应
+
+> ⚠️ 用 Vitest 硬渲染 async 服务端组件
+> ⚠️ E2E 跑 dev 而非 build 产物
+> ⚠️ CI 不缓存 .next/cache，构建重复变慢
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/observe-pipeline](../labs/observe-pipeline) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 在 Vitest 里硬渲染 async 服务端组件，得到无法解释的失败。
+2. E2E 对着 dev server 跑，错过生产构建差异。
+3. CI 每次冷构建，Turbopack 磁盘缓存收益归零。
+
+## 自测 3 题（含答案）
+
+1. async 服务端组件应该怎么测？——**用 Playwright E2E 覆盖；可抽出的纯逻辑单独单测。**
+2. E2E 应跑在什么服务上？——**生产构建产物（`pnpm build && pnpm start`）。**
+3. instant() 的作用？——**在 CI 中断言导航的即时性，防止性能退化。**
+
+# EP.14 综合实战：全栈 SaaS
+
+> 对应正文：[第 14 章 · 全栈 SaaS 实战](../chapters/14-capstone/basics) · 配套实验：[labs/debug-cache-stale](../labs/debug-cache-stale) · 源码深潜：[ppr-postponed-state](../deep-dives/ppr-postponed-state)
+
+## 剧情回顾
+
+- **第 1 格**：标签君上线前夜发现租户 ID 来自 searchParams，营销页与后台还共用一套缓存。
+- **第 2 格**：码叔给出蓝图：路径段租户、三道隔离、按数据特征分层缓存。
+- **第 3 格**：像素酱实证租户上下文与查询强制前缀，再谈 i18n、PWA 与 AI 协作。
+- **第 4 格**：码叔提醒别信前端租户、别把 Next 当完整后端、标签里别放敏感信息。
+
+## 知识点拆解
+
+### 第 1 格 · 多租户隔离
+
+租户识别可用独立域名、子域名或路径段；中小团队从 `/[tenant]` 起步最省心。真正的安全来自会话、DAL 查询条件与数据库 RLS 三层强制。
+
+- 会话载荷带 tenantId，登录时确定
+- DAL 不导出可绕过租户条件的裸查询
+- 数据库唯一约束或 RLS 兜底
+
+```tsx
+const tenant = searchParams.get('tenant')  // 危险
+营销页与后台同一套缓存策略
+i18n 文案散落，PWA 离线空白
+AI 智能体没有项目上下文
+```
+
+### 第 2 格 · 路由与缓存分层
+
+营销区、应用区用路由组分开；缓存按数据特征分层：公共内容可进静态外壳，租户共享数据带 tenantId 标签，用户私有数据用私有缓存或流式，实时数据只走 Stream。
+
+- **/t/[tenant]**：证书与 DNS 复杂度最低
+- **三道隔离**：会话 → DAL → 数据库 RLS
+- **缓存分层**：公共 / 租户 / 私有 / 实时
+
+### 第 3 格 · i18n、PWA 与 AI 协作
+
+- 语言协商放在 proxy，文案与路由段统一管理
+- PWA 离线壳与缓存策略要和框架缓存区分
+- AI 智能体通过 AGENTS.md、Skills 与项目文档获得上下文
+
+```tsx
+export const getTenantContext = cache(async () => {
+  const user = await getCurrentUser()
+  return { tenantId: user.tenantId, role: user.role }
+})
+export async function listProjects() {
+  const { tenantId } = await getTenantContext()
+  return queryProjectsByTenant(tenantId)
+}
+```
+
+### 第 4 格 · BFF 边界
+
+Next.js 可以承担面向前端的编排层，但长任务、消息队列、独立扩缩容的服务仍应留在独立后端。把边界写进架构图，比事后拆服务便宜。
+
+> ⚠️ 用客户端传入的 tenant 做归属判断
+> ⚠️ 把 Next 当完整后端（长任务 / 队列应独立）
+> ⚠️ 缓存标签里放租户名 / 用户邮箱
+
+### 延伸 · 跑一遍真实实验
+
+打开 [labs/debug-cache-stale](../labs/debug-cache-stale) 跟随可运行步骤练一遍；遇到诡异现象，回到[排障图谱](../troubleshooting)按症状查根因。
+
+## 坑点清单
+
+1. 用 `searchParams.tenant` 或表单字段决定数据归属。
+2. 把 Next.js 当完整后端，塞进长任务与队列。
+3. 缓存标签写入租户名、用户邮箱等敏感信息。
+
+## 自测 3 题（含答案）
+
+1. 租户身份应该来自哪里？——**服务端会话；前端参数只能用于非敏感界面偏好。**
+2. 租户隔离的三道防线？——**会话载荷、DAL 查询条件、数据库约束或 RLS。**
+3. 哪些能力应留在独立后端？——**长任务、消息队列、独立扩缩容与复杂域逻辑。**
+
+# Next.js 漫画剧场 · 视觉与叙事规范
+
+> 风格沿用 `frontend-advanced-guide/comics` 的「霓虹墨 Neon Ink」体系，内容改为 Next.js 16.3 教程的 14 章。
+
+## 画布与栅格
+
+- 画布 `viewBox="0 0 1200 840"`，深墨渐变 `#0b1220 → #101a33`。
+- 2 × 2 四格，面板 `572 × 361`，坐标依次为 `(20,84)`、`(608,84)`、`(20,462)`、`(608,462)`。
+- 页眉：EP 徽章 `#7C3AED` 92 × 36，标题渐变 26px，右侧系列名 13px，`y=62` 渐变分隔线。
+- 页脚水印：`NEON INK · nextjs-tutorial · EP.NN`。
+
+## 色板
+
+| 用途 | 颜色 |
+| --- | --- |
+| 底色 | `#0b1220` / `#0e1730` / `#111a30` |
+| 结构线 | `#223055` / `#1e2a44` |
+| 霓虹强调 | 青 `#22d3ee`、紫 `#a78bfa` / `#7C3AED`、品红 `#f472b6`、橙 `#f97316`、绿 `#34d399`、黄 `#fbbf24` |
+
+面板编号色固定：1 青、2 紫、3 品红、4 橙。底色占 60%，结构线 30%，霓虹强调不超过 10%。
+
+## 角色
+
+- **像素酱**：青色高马尾、紫卫衣，代表“动手验证”的读者视角。
+- **标签君**：橙色刺猬头、蓝外套，负责抛出困境与常见误解。
+- **码叔**：白发白须、圆框眼镜、浅灰大褂，负责揭秘、实证与结案。
+
+## 四幕结构
+
+1. **困境**：一个真实开发场景 + 一段错误或朴素写法。
+2. **揭秘**：机制图（2–3 个流程块）或关键概念对照。
+3. **实证**：可运行代码 / 配置 / 输出，给出“改前 → 改后”。
+4. **结案**：⚠ 坑点清单 + 码叔总结。
+
+每格固定：对话框两行（单行汉字不超过 17 字）+ 内容区 + 底部结论条。所有 `<text>` / `<tspan>` 必须显式写 `font-size`。
+
+## 命名与配套
+
+- 文件：`EP.NN-slug.svg` + `EP.NN-slug.md`，NN 与教程章号一致。
+- 每话 MD 固定结构：标题、对应正文与实验、剧情回顾、逐格知识点、延伸实验、坑点清单、自测 3 题（含答案）。
+- 生成：`node scripts/build-comics.mjs`；校验：`node scripts/check-comics.mjs`。
+
+## 阅读器
+
+- 单文件零依赖 `index.html`，运行时读取 `manifest.json`。
+- 双模式：翻页（默认，一话一屏）/ 长卷（连续滚动）。
+- 目录、话目网格（关键词 + 分册筛选）、讲解抽屉、`localStorage` 续读、键盘快捷键（←/→、M、G、Esc）。
+- 进度键：`nextjs-comic-reader-progress-v1`。

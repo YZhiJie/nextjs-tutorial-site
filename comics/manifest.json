@@ -1,0 +1,162 @@
+{
+  "series": "Next.js 漫画剧场 · 霓虹墨 Neon Ink",
+  "version": "1.0.0",
+  "canvas": {
+    "width": 1200,
+    "height": 840
+  },
+  "panels": {
+    "count": 4,
+    "width": 572,
+    "height": 361
+  },
+  "characters": [
+    "像素酱",
+    "标签君",
+    "码叔"
+  ],
+  "parts": [
+    {
+      "file": "01-introduction",
+      "label": "第 1 章 · 认识 Next.js 16.3"
+    },
+    {
+      "file": "02-routing",
+      "label": "第 2 章 · 路由与导航"
+    },
+    {
+      "file": "03-components",
+      "label": "第 3 章 · 服务端与客户端组件"
+    },
+    {
+      "file": "04-data-fetching",
+      "label": "第 4 章 · 数据获取与流式渲染"
+    },
+    {
+      "file": "05-caching",
+      "label": "第 5 章 · 缓存与重新验证"
+    },
+    {
+      "file": "06-instant-navigation",
+      "label": "第 6 章 · Instant Navigations"
+    },
+    {
+      "file": "07-server-actions",
+      "label": "第 7 章 · Server Actions"
+    },
+    {
+      "file": "08-rendering",
+      "label": "第 8 章 · 渲染模式与静态生成"
+    },
+    {
+      "file": "09-route-handlers",
+      "label": "第 9 章 · Route Handlers 与 proxy.ts"
+    },
+    {
+      "file": "10-styling-assets",
+      "label": "第 10 章 · 样式、资源与 Metadata"
+    },
+    {
+      "file": "11-auth-security",
+      "label": "第 11 章 · 认证、授权与安全"
+    },
+    {
+      "file": "12-performance",
+      "label": "第 12 章 · 性能优化体系"
+    },
+    {
+      "file": "13-testing-deployment",
+      "label": "第 13 章 · 测试、可观测与部署"
+    },
+    {
+      "file": "14-capstone",
+      "label": "第 14 章 · 全栈 SaaS 实战"
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "slug": "EP.01-what-is-nextjs",
+      "title": "认识 Next.js 16.3",
+      "part": "01-introduction"
+    },
+    {
+      "ep": 2,
+      "slug": "EP.02-routing-navigation",
+      "title": "路由与导航",
+      "part": "02-routing"
+    },
+    {
+      "ep": 3,
+      "slug": "EP.03-server-client-components",
+      "title": "服务端组件与客户端组件",
+      "part": "03-components"
+    },
+    {
+      "ep": 4,
+      "slug": "EP.04-data-fetching-streaming",
+      "title": "数据获取与流式渲染",
+      "part": "04-data-fetching"
+    },
+    {
+      "ep": 5,
+      "slug": "EP.05-caching-revalidation",
+      "title": "缓存与重新验证",
+      "part": "05-caching"
+    },
+    {
+      "ep": 6,
+      "slug": "EP.06-instant-navigation",
+      "title": "Instant Navigations 即时导航",
+      "part": "06-instant-navigation"
+    },
+    {
+      "ep": 7,
+      "slug": "EP.07-server-actions",
+      "title": "Server Actions 与表单变更",
+      "part": "07-server-actions"
+    },
+    {
+      "ep": 8,
+      "slug": "EP.08-rendering-modes",
+      "title": "渲染模式与静态生成",
+      "part": "08-rendering"
+    },
+    {
+      "ep": 9,
+      "slug": "EP.09-route-handlers-proxy",
+      "title": "Route Handlers 与 proxy.ts",
+      "part": "09-route-handlers"
+    },
+    {
+      "ep": 10,
+      "slug": "EP.10-styling-assets-metadata",
+      "title": "样式、静态资源与 Metadata",
+      "part": "10-styling-assets"
+    },
+    {
+      "ep": 11,
+      "slug": "EP.11-auth-security",
+      "title": "认证、授权与安全",
+      "part": "11-auth-security"
+    },
+    {
+      "ep": 12,
+      "slug": "EP.12-performance",
+      "title": "性能优化体系",
+      "part": "12-performance"
+    },
+    {
+      "ep": 13,
+      "slug": "EP.13-testing-deployment",
+      "title": "测试、可观测与部署",
+      "part": "13-testing-deployment"
+    },
+    {
+      "ep": 14,
+      "slug": "EP.14-capstone-saas",
+      "title": "综合实战：全栈 SaaS",
+      "part": "14-capstone"
+    }
+  ]
+}
