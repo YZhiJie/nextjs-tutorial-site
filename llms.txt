@@ -1,0 +1,67 @@
+# Next.js 16.4.3 全栈实战教程
+
+> Cache Components 全面推荐：静态保证与分阶段渲染
+
+站点：https://yzhijie.github.io/nextjs-tutorial-site/
+内容版本：16.4.3（Cache Components for Every App）
+
+## 教程章节
+- [1. 认识 Next.js 16.4](https://yzhijie.github.io/nextjs-tutorial-site/chapters/01-introduction/basics): 框架定位、16.x 演进脉络、安装与项目结构
+- [2. 路由与导航](https://yzhijie.github.io/nextjs-tutorial-site/chapters/02-routing/basics): 页面/布局/模板、动态路由、路由组、并行与拦截路由
+- [3. 服务端组件与客户端组件](https://yzhijie.github.io/nextjs-tutorial-site/chapters/03-components/basics): 组件边界、use client、组合模式与常见陷阱
+- [4. 数据获取与流式渲染](https://yzhijie.github.io/nextjs-tutorial-site/chapters/04-data-fetching/basics): 服务端取数、fetch、Suspense 流式、并行与串行请求
+- [5. 缓存与重新验证](https://yzhijie.github.io/nextjs-tutorial-site/chapters/05-caching/basics): use cache、cacheLife、cacheTag/updateTag 与动态默认模型
+- [6. Instant Navigations 即时导航](https://yzhijie.github.io/nextjs-tutorial-site/chapters/06-instant-navigation/basics): Cache Components、Partial Prefetching、Stream/Cache/Block
+- [7. Server Actions 与表单变更](https://yzhijie.github.io/nextjs-tutorial-site/chapters/07-server-actions/basics): use server、表单动作、useActionState、乐观更新
+- [8. 渲染模式与静态生成](https://yzhijie.github.io/nextjs-tutorial-site/chapters/08-rendering/basics): SSG/SSR/ISR、generateStaticParams、PPR 心智模型
+- [9. Route Handlers 与 proxy.ts](https://yzhijie.github.io/nextjs-tutorial-site/chapters/09-route-handlers/basics): route.ts 接口、Webhook、middleware 到 proxy 的迁移
+- [10. 样式、静态资源与 Metadata](https://yzhijie.github.io/nextjs-tutorial-site/chapters/10-styling-assets/basics): Tailwind v4、next/font、next/image、元数据与站点地图
+- [11. 认证、授权与安全](https://yzhijie.github.io/nextjs-tutorial-site/chapters/11-auth-security/basics): 会话模式、Cache Components 下的鉴权、CSP 与数据安全
+- [12. 性能优化体系](https://yzhijie.github.io/nextjs-tutorial-site/chapters/12-performance/basics): React Compiler、包体积、懒加载、预取调优、客户端渲染性能与 Web Vitals
+- [13. 测试、可观测与部署](https://yzhijie.github.io/nextjs-tutorial-site/chapters/13-testing-deployment/basics): Playwright/Vitest、OTel、自托管、Adapters 与生产清单
+- [14. 综合实战：全栈 SaaS 应用](https://yzhijie.github.io/nextjs-tutorial-site/chapters/14-capstone/basics): 从架构到上线：多租户、i18n、PWA、AI 智能体协作
+
+## 学习工具
+- [学习路线图](https://yzhijie.github.io/nextjs-tutorial-site/roadmap): 14 章 56 个阶段的完成度总览
+- [自测中心](https://yzhijie.github.io/nextjs-tutorial-site/quiz): 正文自测题汇总与掌握状态
+- [排障图谱](https://yzhijie.github.io/nextjs-tutorial-site/troubleshooting): 从症状到根因的决策树
+
+## 源码深潜
+- [源码深潜：Server Action 的一次调用链](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/action-handler): 打开 next 包的 action-handler：一次 POST 怎样被认出是 action、origin 与 host 为什么必须对得上、actionId 如何找到模块、以及为什么响应不是「结果」而是一次重渲染。
+- [源码深潜：Cache Components 的编译期分析与运行时边界](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/cache-components-pipeline): 从一次构建报错出发，沿着 next 包的 define-env、SWC 选项、路由静态信息与 app-render 的 CacheSignal，看 Cache Components 怎样在编译期变成常量与指令重写，又怎样在运行时决定「外壳到哪结束、动态从哪里开始」。
+- [源码深潜：四层缓存在一次 fetch 里的交汇](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/cache-layers): 打开 next 包的 patch-fetch 与 router-reducer：没有写 cache 选项的 fetch 默认走向哪、Cache Components 下无配置 fetch 为什么直接变成动态孔洞、过期条目怎样在后台重取、以及客户端刷新时哪层失效哪层保留。
+- [源码深潜：服务端渲染的 Flight 流生成链](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/flight-stream): 顺着 app-render 的 renderToReadableStream 与 stream-ops 的 inlined data 流，看 RSC 载荷如何被打包成一段段 <script> 塞进首屏 HTML。
+- [源码深潜：PPR 的 postponed state 如何跨请求续传](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/ppr-postponed-state): 打开 next 包的 server/app-render/postponed-state：静态外壳与动态内容怎样切成两段、`<长度>:<载荷><压缩缓存>` 布局为何离不开长度前缀、解析失败为什么降级而不是崩溃。
+- [源码深潜：预取策略的分级与链接意图调度](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/router-prefetch): 打开 next 包的 segment-cache 与 Link 实现：FetchStrategy 为什么被刻意排序、PrefetchPriority 里唯一的那档 Intent 意味着什么、悬停过的链接怎样拿到被预留的带宽。
+- [源码深潜：软导航生命周期与预取状态机](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/router-soft-navigation): 从一次「地址栏先变、内容后到」的点击出发，看 segment-cache 如何用一个四态枚举描述预取、navigateImpl 如何在三种入口之间分流、未命中时怎样把一次动态请求当两次用，以及后退为什么能从另一张缓存表里瞬时恢复。
+- [源码深潜：Server Action 的请求管线与安全模型](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/server-action-pipeline): 从一次部署后的 404 与一次跨站 POST 被拒说起，沿着 next 包的请求元数据、42 字符 action ID、构建密钥哈希、origin 检查与流式体积上限，看一次 Server Action 在真正调用函数之前要过几道闸门，以及这些闸门各自防住什么、防不住什么。
+- [源码深潜：Turbopack 的增量构建图与缓存失效](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/turbopack-incremental-graph): 从「第二次构建为什么快、改配置为什么又变慢」出发，看 next 包交给 Turbopack 内核的持久化缓存开关、以不可变文件为单位的缓存目录、Dev 下的 partial/restart 两条增量路径，以及 hmrHash 如何把代码变更传进 use cache 的键。
+- [源码深潜：use cache 的运行时包装与缓存条目](https://yzhijie.github.io/nextjs-tutorial-site/deep-dives/use-cache-wrapper): 打开 next 包的 server/use-cache：一条 'use cache' 函数编译后如何被 cache() 包装、缓存条目为何要惰性生成、cacheTag 究竟把标签存到了哪里。
+
+## 全栈实验
+- [缓存命中与按需失效](https://yzhijie.github.io/nextjs-tutorial-site/labs/cache-hit): 对比不缓存函数与 use cache 缓存函数的差异，并用 Server Action 配合 revalidateTag 让缓存按需失效。
+- [客户端交互：筛选与加购](https://yzhijie.github.io/nextjs-tutorial-site/labs/client-interaction): 厘清服务端组件与客户端组件的边界：服务端提供内存商品数据，客户端组件负责加购计数与关键词、分类即时筛选。
+- [Suspense 流式渲染](https://yzhijie.github.io/nextjs-tutorial-site/labs/data-streaming): 用独立 Suspense 边界观察 HTML 分片流式到达，并用路由级 loading.tsx 体验慢页面的骨架屏。
+- [复现并修复并发丢更新](https://yzhijie.github.io/nextjs-tutorial-site/labs/debug-action-race): 快速重复提交下的 read-modify-write 竞态导致丢失更新。先用 Promise.all 并发提交复现计数错乱，再用一条 Promise 队列串行化写入修复。
+- [复现并修复鉴权绕过](https://yzhijie.github.io/nextjs-tutorial-site/labs/debug-auth-bypass): 鉴权只放在 proxy（边缘代理）的经典事故：页面有 302 拦截看似安全，curl 直连 API 却无需任何凭证拿到数据。先复现绕过，再把鉴权断言下沉到数据访问层。
+- [复现并修复缓存陈旧数据](https://yzhijie.github.io/nextjs-tutorial-site/labs/debug-cache-stale): 写入后忘记失效缓存，页面读到陈旧数据。借助 tag 失效基础设施（createCached / expireTag）复现 STALE，再在写入后调用 expireTag 修复。
+- [复现并修复 hydration mismatch](https://yzhijie.github.io/nextjs-tutorial-site/labs/debug-hydration-mismatch): 服务端预渲染与客户端首屏标记不一致引发的 React hydration mismatch。先复现「渲染期直接读时钟」导致的首屏不一致，再让首屏用稳定占位、挂载后写真实时间。
+- [复现并修复即时导航降级](https://yzhijie.github.io/nextjs-tutorial-site/labs/debug-instant-degradation): Instant Insights 报「导航不够即时」的典型根因：渲染被动态数据阻塞。先复现「等数据到位才输出」导致首字节拖到 250ms，再改成「外壳先行、数据区流式补齐」的分块渲染。
+- [复现并修复 after 链丢失](https://yzhijie.github.io/nextjs-tutorial-site/labs/debug-middleware-after): 中间件里漏写 await next() 的连锁反应：执行顺序颠倒、耗时统计失真、错误逃逸成未捕获异常。先在洋葱链上复现这三种症状，再补回 await 串起主干。
+- [观测动态信号一票否决](https://yzhijie.github.io/nextjs-tutorial-site/labs/debug-static-dynamic): 以为是静态页（○），构建后却是 ƒ 且内容不更新？多半是渲染链里触达了 cookies()/headers()。先用探针观测「一票否决」全过程，再把会话值收进动态孤岛。
+- [你好，Next.js 16.4.3](https://yzhijie.github.io/nextjs-tutorial-site/labs/hello-next): 从零运行一个最小 App Router 项目：观察服务端渲染的时间、Link 客户端导航，以及服务端组件零 JavaScript 的含义。
+- [手写 Server Action 调用管线](https://yzhijie.github.io/nextjs-tutorial-site/labs/mini-action): 不依赖 Next.js：用约百行代码实现 Server Action 的完整链路 —— Flight 序列化（$ 标签保住 undefined/Date）、action 注册表查找、参数反序列化执行、错误 digest 化与 Flight 行响应，配 5 个可运行校验用例。
+- [手写 tag 失效迷你缓存](https://yzhijie.github.io/nextjs-tutorial-site/labs/mini-cache): 不依赖任何框架：实现「先读缓存、未命中回源并登记」的 use cache 迷你版，以及 tag 反向索引驱动的 updateTag 失效传播，配 6 个可运行校验用例。
+- [手写 Flight 行协议序列化器](https://yzhijie.github.io/nextjs-tutorial-site/labs/mini-flight): RSC 的传输格式长什么样？手写 vnode → Flight 行的序列化器与客户端 rebuild：宿主标签直出、客户端组件编成 I 行 + "$<行号>" 引用、key 与嵌套结构完整往返，配 5 个可运行校验用例。
+- [手写 ISR 再生成调度（stale-while-revalidate）](https://yzhijie.github.io/nextjs-tutorial-site/labs/mini-isr): 不依赖任何框架：实现「新鲜命中 / 过期先返回旧值 / 冷启动同步生成」三态调度与单飞去重，配 7 个可运行校验用例（含并发惊群）。
+- [手写中间件洋葱链](https://yzhijie.github.io/nextjs-tutorial-site/labs/mini-middleware): 不依赖任何框架：用约 70 行 TypeScript 实现 Koa 式 compose —— 递归的 dispatch/next、异步回卷与短路，配 5 个可运行校验用例。
+- [手写迷你文件系统路由](https://yzhijie.github.io/nextjs-tutorial-site/labs/mini-router): 不依赖任何框架：用 Node 内置模块实现「目录扫描 → 路由树 → URL matcher」三段管线，含动态段捕获与静态优先策略，配可运行校验脚本。
+- [搭建可观测管线：指标、钩子与面板](https://yzhijie.github.io/nextjs-tutorial-site/labs/observe-pipeline): 给迷你服务器接上 instrumentation 管线：register() 启动钩子初始化指标单例，环形缓冲记录每次请求的 TTFB，渲染耗时与缓存命中分开累计，最后由 /__metrics 面板暴露 p95 与命中率。骨架缺了两处关键记录调用，先复现再补全。
+- [Route Handlers 与 proxy](https://yzhijie.github.io/nextjs-tutorial-site/labs/route-handlers-proxy): 编写返回 JSON 的 Route Handlers，并用 Next 16 的 proxy 为接口统一注入 X-Lab 响应头。
+- [嵌套路由与布局](https://yzhijie.github.io/nextjs-tutorial-site/labs/routing-nested): 用一个最小商城掌握嵌套布局、动态路由 await params、notFound 中文 404 边界与可选捕获所有段。
+- [Server Actions 待办清单](https://yzhijie.github.io/nextjs-tutorial-site/labs/server-action-todo): 用 Server Actions、useActionState 与原生表单实现待办增删，禁用 JavaScript 后表单依然可以提交。
+- [样式与静态资源](https://yzhijie.github.io/nextjs-tutorial-site/labs/styling-assets): 实践 next/font/google 自托管字体、next/image 远程图白名单、metadata 与深色 CSS 变量主题。
+
+## 可选
+- [完整正文（单文件）](https://yzhijie.github.io/nextjs-tutorial-site/llms-full.txt)
+- [RSS](https://yzhijie.github.io/nextjs-tutorial-site/rss.xml)

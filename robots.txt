@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://yzhijie.github.io/nextjs-tutorial-site/sitemap.xml
